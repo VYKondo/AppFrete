@@ -1,10 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+// Pegamos as variáveis
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("Atenção: Supabase URL ou Key não encontradas.")
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Se as variáveis estiverem faltando (comum no build da Vercel), 
+// usamos valores falsos apenas para o build não quebrar.
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder-url.supabase.co',
+  supabaseAnonKey || 'placeholder-key'
+)
