@@ -9,28 +9,17 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [role, setRole] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  
+  // Estado para armazenar o odômetro da última viagem deste veículo
+  const [odometroAnteriorBanco, setOdometroAnteriorBanco] = useState<number | null>(null)
+  
   const router = useRouter()
 
   const [formValues, setFormValues] = useState<any>({
-    motorista: '',
-    placa: '',
-    data_frete: '',
-    peso_ton: '',
-    preco_ton: '',
-    pedagio: '',
-    mecanica: '',
-    eletrica: '',
-    borracharia: '',
-    solda: '',
-    graxa: '',
-    
-    patio: '',
-    limpeza: '',
-    lavagem: '',
-    peca: '',
-    caixinha: '',
-    filtro: '',
-    diversos_operacional: '',
+    motorista: '', placa: '', data_frete: '', peso_ton: '', preco_ton: '',
+    pedagio: '', mecanica: '', eletrica: '', borracharia: '', solda: '',
+    graxa: '', patio: '', limpeza: '', lavagem: '', peca: '',
+    caixinha: '', filtro: '', diversos_operacional: '',
   })
 
   const [abastecimentos, setAbastecimentos] = useState([
@@ -48,29 +37,74 @@ export default function Home() {
     checkUser()
   }, [router])
 
+  // LÓGICA DE BUSCA DO ÚLTIMO ODÔMETRO PELA PLACA
+  useEffect(() => {
+    const placaLimpa = formValues.placa.replace(/[^a-zA-Z0-9]/g, '')
+    if (placaLimpa.length >= 7) {
+      async function buscarUltimoRegistro() {
+        const { data } = await supabase
+          .from('fretes')
+          .select('odometro_atual')
+          .eq('placa', placaLimpa.toUpperCase())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        
+        if (data) {
+          setOdometroAnteriorBanco(data.odometro_atual)
+        } else {
+          setOdometroAnteriorBanco(0) // Veículo novo no sistema
+        }
+      }
+      buscarUltimoRegistro()
+    } else {
+      setOdometroAnteriorBanco(null)
+    }
+  }, [formValues.placa])
+
   const parseCurrency = (v: any) => Number(String(v).replace(/\D/g, '')) / 100
 
-  // Cálculo de Dashboard incluindo os novos campos
+  // CÁLCULO DA MÉDIA KML (ELO ENTRE VIAGENS)
+  const abastecimentosComMedia = useMemo(() => {
+    let lastOdo = odometroAnteriorBanco || 0
+    let kmAcum = 0
+    let litrosAcum = 0
+
+    return abastecimentos.map((abs) => {
+      const v = Number(abs.volume) || 0
+      const o = Number(abs.odometro) || 0
+      const c = abs.completou
+      
+      // Se não temos odômetro anterior (veículo novo), a km percorrida é 0 até a próxima parada
+      const difKm = (lastOdo > 0) ? (o - lastOdo) : 0
+      
+      const kmAcumAtual = kmAcum + difKm
+      const litrosAcumAtual = litrosAcum + v
+      const media = (c && litrosAcumAtual > 0 && kmAcumAtual > 0) ? (kmAcumAtual / litrosAcumAtual) : 0
+
+      // Atualiza referências para a próxima linha do map
+      if (c) {
+        lastOdo = o; kmAcum = 0; litrosAcum = 0
+      } else {
+        lastOdo = o; kmAcum = kmAcumAtual; litrosAcum = litrosAcumAtual
+      }
+
+      return { ...abs, media_kml: media }
+    })
+  }, [abastecimentos, odometroAnteriorBanco])
+
+  // CÁLCULO DE DASHBOARD (PARA TODOS OS USERS)
   const stats = useMemo(() => {
     const receita = (Number(formValues.peso_ton) || 0) * parseCurrency(formValues.preco_ton)
     const custoDiesel = abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0)
-    
-    const despesasManutencao = 
-      parseCurrency(formValues.pedagio) + parseCurrency(formValues.mecanica) +
-      parseCurrency(formValues.eletrica) + parseCurrency(formValues.borracharia) +
-      parseCurrency(formValues.solda) + parseCurrency(formValues.graxa) +
-      parseCurrency(formValues.diversos_operacional) +
-      // ADICIONADOS AO CÁLCULO
-      parseCurrency(formValues.patio) + parseCurrency(formValues.limpeza) +
-      parseCurrency(formValues.lavagem) + parseCurrency(formValues.peca) +
-      parseCurrency(formValues.caixinha) + parseCurrency(formValues.filtro)
+    const despesasManutencao = ['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro', 'diversos_operacional']
+      .reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0)
     
     return { receita, despesas: despesasManutencao + custoDiesel, lucro: receita - (despesasManutencao + custoDiesel) }
   }, [formValues, abastecimentos])
 
   const handleInputChange = (e: any) => {
     const { name, value } = e.target
-    // Força placa em MAIÚSCULO
     const val = name === 'placa' ? value.toUpperCase() : value
     setFormValues((prev: any) => ({ ...prev, [name]: val }))
   }
@@ -84,60 +118,18 @@ export default function Home() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
-
     try {
-      const { data: ultimoFrete } = await supabase
-        .from('fretes')
-        .select('odometro_atual, km_acumulado, litros_acumulados')
-        .eq('placa', formValues.placa)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      let lastOdo = ultimoFrete?.odometro_atual || 0
-      let lastKmAcum = ultimoFrete?.km_acumulado || 0
-      let lastLitrosAcum = ultimoFrete?.litros_acumulados || 0
-
-      const processados = abastecimentos.map((abs) => {
-        const v = Number(abs.volume), o = Number(abs.odometro), c = abs.completou
-        const difKm = o - lastOdo
-        const kmAcumAtual = c ? difKm : (Number(lastKmAcum) + difKm)
-        const litrosAcumAtual = c ? v : (Number(lastLitrosAcum) + v)
-        const media = (c && litrosAcumAtual > 0) ? (kmAcumAtual / litrosAcumAtual) : 0
-        lastOdo = o; lastKmAcum = kmAcumAtual; lastLitrosAcum = litrosAcumAtual
-        return { 
-          volume: v, odometro: o, valor: parseCurrency(abs.valor), 
-          completou: c, km_acumulado: kmAcumAtual, 
-          litros_acumulados: litrosAcumAtual, media_kml: media 
-        }
-      })
-
+      const processados = abastecimentosComMedia
       const ultimoRegistro = processados[processados.length - 1]
 
       const { error } = await supabase.from('fretes').insert([{
         ...formValues,
         peso_ton: Number(formValues.peso_ton),
         preco_ton: parseCurrency(formValues.preco_ton),
-        pedagio: parseCurrency(formValues.pedagio),
-        mecanica: parseCurrency(formValues.mecanica),
-        eletrica: parseCurrency(formValues.eletrica),
-        borracharia: parseCurrency(formValues.borracharia),
-        solda: parseCurrency(formValues.solda),
-        graxa: parseCurrency(formValues.graxa),
-        diversos_operacional: parseCurrency(formValues.diversos_operacional),
-        // SALVANDO NOVOS CAMPOS
-        patio: parseCurrency(formValues.patio),
-        limpeza: parseCurrency(formValues.limpeza),
-        lavagem: parseCurrency(formValues.lavagem),
-        peca: parseCurrency(formValues.peca),
-        caixinha: parseCurrency(formValues.caixinha),
-        filtro: parseCurrency(formValues.filtro),
-        
+        ...Object.fromEntries(Object.entries(formValues).filter(([k]) => k !== 'motorista' && k !== 'placa' && k !== 'data_frete').map(([k, v]) => [k, parseCurrency(v)])),
         abastecimentos_json: processados,
-        valor: processados.reduce((acc, curr) => acc + curr.valor, 0),
-        odometro_atual: ultimoRegistro.odometro,
-        km_acumulado: ultimoRegistro.km_acumulado,
-        litros_acumulados: ultimoRegistro.litros_acumulados,
+        valor: processados.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0),
+        odometro_atual: Number(ultimoRegistro.odometro),
         media_kml: ultimoRegistro.media_kml,
         completou: ultimoRegistro.completou
       }])
@@ -170,62 +162,75 @@ export default function Home() {
           </div>
         </header>
 
-        {role === 'admin' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-2xl">
-              <span className="text-[10px] uppercase text-slate-500 font-bold block">Receita Bruta</span>
-              <p className="text-xl font-bold text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.receita)}</p>
-            </div>
-            <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-2xl">
-              <span className="text-[10px] uppercase text-slate-500 font-bold block">Total Despesas</span>
-              <p className="text-xl font-bold text-red-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.despesas)}</p>
-            </div>
-            <div className="bg-slate-900/80 border border-emerald-500/30 p-4 rounded-2xl bg-emerald-500/5">
-              <span className="text-[10px] uppercase text-emerald-500 font-bold block">Lucro Estimado</span>
-              <p className="text-xl font-bold text-emerald-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.lucro)}</p>
-            </div>
-          </div>
-        )}
+        {/* DASHBOARD VISÍVEL PARA TODOS */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <StatCard label="Receita Bruta" value={stats.receita} color="text-white" />
+          <StatCard label="Total Despesas" value={stats.despesas} color="text-red-400" />
+          <StatCard label="Lucro Estimado" value={stats.lucro} color="text-emerald-400" highlight />
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6 pb-12">
+          {/* DADOS DA CARGA */}
           <section className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl shadow-xl">
-            <h2 className="text-emerald-400 font-semibold uppercase text-[11px] tracking-widest mb-6">📦 Dados da Carga</h2>
+            <h2 className="text-emerald-400 font-semibold uppercase text-[11px] tracking-widest mb-6 flex items-center gap-2">
+              <span>📦 Dados da Carga</span>
+              {odometroAnteriorBanco !== null && (
+                <span className="text-[9px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-500/20 animate-fade-in">
+                  {odometroAnteriorBanco > 0 ? `Km Inicial: ${odometroAnteriorBanco}` : 'Veículo Novo'}
+                </span>
+              )}
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <FloatingInput name="motorista" value={formValues.motorista} onChange={handleInputChange} placeholder="Motorista" required />
-              <FloatingInput name="placa" value={formValues.placa} onChange={handleInputChange} placeholder="Placa" required />
+              <div className="relative">
+                <FloatingInput name="placa" value={formValues.placa} onChange={handleInputChange} placeholder="Placa" required />
+                {odometroAnteriorBanco !== null && odometroAnteriorBanco > 0 && (
+                  <span className="absolute right-3 top-6 text-emerald-500 text-xs">✓</span>
+                )}
+              </div>
               <FloatingInput type="date" name="data_frete" value={formValues.data_frete} onChange={handleInputChange} placeholder="Data" required />
               <FloatingNumberInput name="peso_ton" value={formValues.peso_ton} onChange={handleInputChange} placeholder="Peso Carregado" suffix="Ton" />
               <FloatingCurrencyInput name="preco_ton" value={formValues.preco_ton} onChange={handleInputChange} placeholder="Preço por Tonelada" />
             </div>
           </section>
 
+          {/* MANUTENÇÃO */}
           <section className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl shadow-xl">
             <h2 className="text-amber-400 font-semibold uppercase text-[11px] tracking-widest mb-6">🛠️ Manutenção e Despesas</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa',  'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro', 'diversos'].map(campo => (
+              {['pedágio', 'mecânica', 'elétrica', 'borracharia', 'solda', 'graxa', 'pátio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro', 'diversos_operacional'].map(campo => (
                 <FloatingCurrencyInput key={campo} name={campo} value={formValues[campo]} onChange={handleInputChange} placeholder={campo.replace('_', ' ').toUpperCase()} />
               ))}
             </div>
           </section>
 
+          {/* ABASTECIMENTOS */}
           <section className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl shadow-xl">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-blue-400 font-semibold uppercase text-[11px] tracking-widest">⛽ Paradas para Abastecimento</h2>
-              {abastecimentos.length < 5 && (
-                <button type="button" onClick={() => setAbastecimentos([...abastecimentos, { volume: '', odometro: '', valor: '', completou: false }])} className="text-[10px] bg-blue-500/20 text-blue-400 px-3 py-1 rounded-lg border border-blue-500/30 hover:bg-blue-500 hover:text-white transition-all">+ ADICIONAR PARADA</button>
-              )}
+              <button type="button" onClick={() => setAbastecimentos([...abastecimentos, { volume: '', odometro: '', valor: '', completou: false }])} className="text-[10px] bg-blue-500/20 text-blue-400 px-3 py-1 rounded-lg border border-blue-500/30 hover:bg-blue-500 hover:text-white transition-all">+ ADICIONAR PARADA</button>
             </div>
             <div className="space-y-4">
-              {abastecimentos.map((abs, index) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-slate-800/20 rounded-xl border border-slate-700/30 relative">
-                  <FloatingNumberInput placeholder={`Volume (L) - P${index+1}`} value={abs.volume} onChange={(e: any) => handleAbastecimentoChange(index, 'volume', e.target.value)} suffix="L" />
-                  <FloatingNumberInput placeholder="Odômetro (Km)" value={abs.odometro} onChange={(e: any) => handleAbastecimentoChange(index, 'odometro', e.target.value)} suffix="Km" />
-                  <FloatingCurrencyInput placeholder="Valor Pago" value={abs.valor} onChange={(e: any) => handleAbastecimentoChange(index, 'valor', e.target.value)} />
-                  <label className="flex items-center gap-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50 cursor-pointer">
+              {abastecimentosComMedia.map((abs, index) => (
+                <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-3 p-4 bg-slate-800/20 rounded-xl border border-slate-700/30 relative">
+                  <FloatingCurrencyInput placeholder="Valor Diesel" value={abs.valor} onChange={(e: any) => handleAbastecimentoChange(index, 'valor', e.target.value)} />
+                  <FloatingNumberInput placeholder="Odômetro" value={abs.odometro} onChange={(e: any) => handleAbastecimentoChange(index, 'odometro', e.target.value)} suffix="Km" />
+                  
+                  <FloatingNumberInput placeholder="Volume (L)" value={abs.volume} onChange={(e: any) => handleAbastecimentoChange(index, 'volume', e.target.value)} suffix="L" />
+                  
+                  <label className="flex flex-col items-center justify-center bg-slate-800/40 rounded-xl border border-slate-700/50 cursor-pointer">
+                    <span className="text-[9px] font-bold text-slate-500 uppercase mb-1">Cheio?</span>
                     <input type="checkbox" checked={abs.completou} onChange={(e) => handleAbastecimentoChange(index, 'completou', e.target.checked)} className="w-5 h-5 accent-emerald-500" />
-                    <span className="text-sm text-slate-300">Encheu o Tanque?</span>
                   </label>
-                  {index > 0 && <button type="button" onClick={() => setAbastecimentos(abastecimentos.filter((_, i) => i !== index))} className="absolute -right-2 -top-2 bg-red-500/80 text-white w-5 h-5 rounded-full text-[10px]">✕</button>}
+
+                  <div className="flex flex-col items-center justify-center bg-slate-900/60 rounded-xl border border-blue-500/20">
+                    <span className="text-[9px] font-black text-blue-400 uppercase leading-none mb-1">Média Parada</span>
+                    <span className={`text-base font-bold ${abs.media_kml > 0 ? 'text-white' : 'text-slate-600'}`}>
+                      {abs.media_kml > 0 ? abs.media_kml.toFixed(2) : '--'}
+                    </span>
+                  </div>
+
+                  {index > 0 && <button type="button" onClick={() => setAbastecimentos(abastecimentos.filter((_, i) => i !== index))} className="absolute -right-2 -top-2 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">✕</button>}
                 </div>
               ))}
             </div>
@@ -240,17 +245,21 @@ export default function Home() {
   )
 }
 
+// COMPONENTES DE INTERFACE
+function StatCard({ label, value, color, highlight }: any) {
+  return (
+    <div className={`bg-slate-900/80 border border-slate-800 p-4 rounded-2xl ${highlight ? 'bg-emerald-500/5 border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.05)]' : ''}`}>
+      <span className="text-[10px] uppercase text-slate-500 font-bold block">{label}</span>
+      <p className={`text-xl font-bold ${color}`}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)}</p>
+    </div>
+  )
+}
+
 function FloatingInput({ placeholder, highlight, ...props }: any) {
   return (
     <div className="relative group">
-      <input 
-        {...props} 
-        placeholder=" " 
-        className={`peer w-full bg-slate-800/40 border border-slate-700/80 text-white px-4 pt-6 pb-2 rounded-xl focus:border-emerald-500 outline-none transition-all ${highlight ? 'border-emerald-500/50 bg-emerald-500/5' : ''}`} 
-      />
-      <label 
-        className="pointer-events-none absolute left-4 top-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 transition-all peer-placeholder-shown:top-5 peer-placeholder-shown:text-sm peer-placeholder-shown:font-normal peer-focus:top-2 peer-focus:text-[10px] peer-focus:text-emerald-400"
-      >
+      <input {...props} placeholder=" " className={`peer w-full bg-slate-800/40 border border-slate-700/80 text-white px-4 pt-6 pb-2 rounded-xl focus:border-emerald-500 outline-none transition-all ${highlight ? 'border-emerald-500/50 bg-emerald-500/5' : ''}`} />
+      <label className="pointer-events-none absolute left-4 top-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 transition-all peer-placeholder-shown:top-5 peer-placeholder-shown:text-sm peer-placeholder-shown:font-normal peer-focus:top-2 peer-focus:text-[10px] peer-focus:text-emerald-400">
         {placeholder}
       </label>
     </div>
@@ -259,9 +268,9 @@ function FloatingInput({ placeholder, highlight, ...props }: any) {
 
 function FloatingNumberInput({ suffix, ...props }: any) {
   return (
-    <div className="relative flex items-center">
+    <div className="relative group">
       <FloatingInput {...props} onInput={(e: any) => e.target.value = e.target.value.replace(/[^0-9.]/g, '')} />
-      {suffix && <span className="absolute right-4 top-[62%] -translate-y-1/2 text-[10px] font-bold text-slate-500">{suffix}</span>}
+      {suffix && <span className="absolute right-4 top-[62%] -translate-y-1/2 text-[10px] font-bold text-slate-500 pointer-events-none group-focus-within:text-emerald-400">{suffix}</span>}
     </div>
   )
 }
@@ -273,4 +282,3 @@ function FloatingCurrencyInput({ ...props }: any) {
   }
   return <FloatingInput {...props} onInput={(e: any) => { e.target.value = format(e.target.value) }} />
 }
-

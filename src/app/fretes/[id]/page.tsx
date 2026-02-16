@@ -204,7 +204,7 @@ export default function EditFretePage() {
           <section className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl shadow-xl">
             <div className="flex items-center gap-2 mb-6 text-amber-400"><Wrench size={20} /><h2 className="font-semibold uppercase text-xs tracking-wider">Custos Operacionais</h2></div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'diversos_operacional', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro'].map((campo) => (
+              {['pedágio', 'mecânica', 'elátrica', 'borracharia', 'solda', 'graxa', 'diversos_operacional', 'pátio', 'limpeza', 'lavagem', 'peça', 'caixinha', 'filtro'].map((campo) => (
                 <FloatingCurrencyInput 
                   key={campo} 
                   name={campo} 
