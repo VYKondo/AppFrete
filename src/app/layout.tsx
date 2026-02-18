@@ -21,7 +21,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
 };
-
+//fodasseissonaoéimportante!!!
 export const metadata: Metadata = {
   title: "NSA Logística",
   description: "Controle de fretes",
