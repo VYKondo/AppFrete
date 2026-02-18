@@ -22,21 +22,31 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-// Metadados integrando o Manifesto do PWA
 export const metadata: Metadata = {
-  title: "Sistema de Fretes VYK",
-  description: "Controle de fretes, despesas e médias KML",
+  title: "NSA Logística",
+  description: "Controle de fretes",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Fretes VYK",
+    title: "NSA Logística",
   },
   icons: {
-    apple: "/icon.png",
+    icon: [
+      { url: "/favicon.ico?v=3" },
+      { url: "/icon.png?v=3", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png?v=3", sizes: "180x180", type: "image/png" },
+    ],
+    other: [
+      {
+        rel: 'apple-touch-icon-precomposed',
+        url: '/apple-touch-icon.png?v=3',
+      },
+    ],
   },
 };
-
 export default function RootLayout({
   children,
 }: Readonly<{

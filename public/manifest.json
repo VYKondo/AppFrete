@@ -1,15 +1,27 @@
 {
-  "name": "Sistema de Fretes VYK",
-  "short_name": "Fretes",
-  "description": "Controle de Fretes e Médias KML",
+  "name": "NSA Logística",
+  "short_name": "NSA",
+  "description": "Controle de Fretes",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b0f1a",
-  "theme_color": "#10b981",
+  "theme_color": "#0b0f1a",
   "icons": [
     {
-      "src": "/icon.png",
+      "src": "/icon.png?v=3",
       "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.png?v=3",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png?v=3",
+      "sizes": "180x180",
       "type": "image/png"
     }
   ]
