@@ -127,20 +127,30 @@ export default function FretesPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-6 pt-6 md:pt-0 border-t md:border-t-0 border-slate-800/50">
-                    <div className="text-right border-r border-slate-800 pr-6">
-                      <span className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black block mb-1">Receita</span>
-                      <span className="text-sm font-bold text-blue-400">{formatCurrency(receitaTotal)}</span>
+                  {/* BLOCO FINANCEIRO CORRIGIDO PARA RESPONSIVIDADE */}
+                  <div className="flex flex-wrap md:flex-nowrap items-center gap-4 md:gap-6 pt-6 md:pt-0 border-t md:border-t-0 border-slate-800/50 w-full md:w-auto justify-between">
+                    <div className="grid grid-cols-2 md:flex items-center gap-6 w-full md:w-auto">
+                      <div className="text-right border-r border-slate-800 pr-4 md:pr-6">
+                        <span className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black block mb-1">Receita</span>
+                        <span className="text-sm font-bold text-blue-400">{formatCurrency(receitaTotal)}</span>
+                      </div>
+                      
+                      <div className="text-right md:border-r md:border-slate-800 md:pr-6">
+                        <span className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black block mb-1">Despesas</span>
+                        <span className="text-sm font-bold text-red-400">{formatCurrency(despesasTotal)}</span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black block mb-1">Despesas</span>
-                      <span className="text-sm font-bold text-red-400">{formatCurrency(despesasTotal)}</span>
-                    </div>
-                    <div className="text-right min-w-[120px]">
+
+                    <div className="text-right min-w-[120px] w-full md:w-auto pt-4 md:pt-0 border-t border-slate-800/30 md:border-none">
                       <span className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black block mb-1">Lucro Líquido</span>
-                      <span className={`text-2xl font-black ${lucro >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(lucro)}</span>
+                      <span className={`text-xl md:text-2xl font-black ${lucro >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {formatCurrency(lucro)}
+                      </span>
                     </div>
-                    <div className={`p-2 bg-slate-800 rounded-xl transition-transform ${expanded === frete.id ? 'rotate-180' : ''}`}><ChevronDown size={20} /></div>
+
+                    <div className={`hidden md:block p-2 bg-slate-800 rounded-xl transition-transform ${expanded === frete.id ? 'rotate-180' : ''}`}>
+                      <ChevronDown size={20} />
+                    </div>
                   </div>
                 </div>
 
