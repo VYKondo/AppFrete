@@ -37,9 +37,14 @@ export default function EditFretePage() {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num || 0)
   }
 
-  const formatDecimal = (value: any) => {
-    const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / 100
-    return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num || 0)
+  // Ajustado para aceitar uma flag de peso (3 casas)
+  const formatDecimal = (value: any, isWeight = false) => {
+    const divisor = isWeight ? 1000 : 100
+    const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / divisor
+    return new Intl.NumberFormat('pt-BR', { 
+      minimumFractionDigits: isWeight ? 3 : 2, 
+      maximumFractionDigits: isWeight ? 3 : 2 
+    }).format(num || 0)
   }
 
   const parseCurrency = (v: any) => {
@@ -115,6 +120,7 @@ export default function EditFretePage() {
     const ultimo = paradasProntas[paradasProntas.length - 1] || {}
     const dataToSave: any = {
       ...formValues,
+      // O parseNumero já lida com a string formatada independente das casas
       peso_ton: parseNumero(formValues.peso_ton),
       preco_ton: parseCurrency(formValues.preco_ton),
       abastecimentos_json: paradasProntas,
@@ -161,7 +167,8 @@ export default function EditFretePage() {
               <BigInput label="Data" type="date" value={formValues.data_frete} onChange={(e: any) => setFormValues({...formValues, data_frete: e.target.value})} required />
               
               <div className="grid grid-cols-2 gap-4">
-                <BigInput label="Peso (Ton)" value={formatDecimal(formValues.peso_ton)} onChange={(e: any) => setFormValues({...formValues, peso_ton: e.target.value})} isDecimal />
+                {/* Aqui passamos explicitamente name="peso_ton" para o componente saber formatar 3 casas */}
+                <BigInput label="Peso (Ton)" name="peso_ton" value={formatDecimal(formValues.peso_ton, true)} onChange={(e: any) => setFormValues({...formValues, peso_ton: e.target.value})} isDecimal />
                 <BigInput label="Valor/Ton" value={formatCurrency(formValues.preco_ton)} onChange={(e: any) => setFormValues({...formValues, preco_ton: e.target.value})} isCurrency />
               </div>
             </div>
@@ -211,19 +218,18 @@ export default function EditFretePage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {camposOperacionais.map(campo => (
                 <div key={campo}>
-                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-tighter">{campo.replace('_', ' ')}</label>
-                   <input
-                    type="text"
-                    value={formatCurrency(formValues[campo])}
-                    onChange={(e: any) => setFormValues({...formValues, [campo]: e.target.value})}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-sm font-bold text-white outline-none focus:ring-2 ring-emerald-500/20"
-                  />
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-tighter">{campo.replace('_', ' ')}</label>
+                    <input
+                     type="text"
+                     value={formatCurrency(formValues[campo])}
+                     onChange={(e: any) => setFormValues({...formValues, [campo]: e.target.value})}
+                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-sm font-bold text-white outline-none focus:ring-2 ring-emerald-500/20"
+                   />
                 </div>
               ))}
-             </div>
+              </div>
           </section>
 
-          {/* DISPLAY NO FINAL DA PÁGINA (SEM FIXO OU STICKY) */}
           <div className="pt-6">
             <div className="bg-slate-900 p-4 rounded-3xl border-2 border-emerald-500 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-6 w-full md:w-auto justify-around md:justify-start text-white">
@@ -248,14 +254,23 @@ export default function EditFretePage() {
   )
 }
 
-function BigInput({ label, badge, isCurrency, isDecimal, onChange, ...props }: any) {
+function BigInput({ label, badge, isCurrency, isDecimal, onChange, name, ...props }: any) {
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (isCurrency || isDecimal) {
       const val = e.target.value.replace(/\D/g, '');
-      const num = Number(val) / 100;
+      
+      // Lógica de 3 casas para o campo peso_ton
+      const isWeight = name === 'peso_ton';
+      const divisor = isWeight ? 1000 : 100;
+      const num = Number(val) / divisor;
+      
       const formatted = isCurrency 
         ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num)
-        : new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+        : new Intl.NumberFormat('pt-BR', { 
+            minimumFractionDigits: isWeight ? 3 : 2, 
+            maximumFractionDigits: isWeight ? 3 : 2 
+          }).format(num);
+      
       e.target.value = formatted;
     }
     if (onChange) onChange(e);
@@ -269,9 +284,10 @@ function BigInput({ label, badge, isCurrency, isDecimal, onChange, ...props }: a
       </div>
       <input 
         {...props}
+        name={name}
         onChange={handleInputChange}
         className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-4 text-white font-bold outline-none focus:ring-2 ring-blue-500/50 transition-all placeholder:text-slate-600"
       />
     </div>
   )
-}     
+}
