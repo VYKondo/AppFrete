@@ -12,8 +12,9 @@ import {
   Wrench, Settings, Construction
 } from 'lucide-react'
 
-// Utilitário para garantir precisão matemática de 2 casas decimais
+// Utilitários para precisão matemática
 const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100
+const round3 = (num: number) => Math.round((num + Number.EPSILON) * 1000) / 1000
 
 // COMPONENTE BIGINPUT
 function BigInput({
@@ -30,7 +31,11 @@ function BigInput({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isCurrency || isDecimal) {
       const val = e.target.value.replace(/\D/g, '')
-      const numberValue = Number(val) / 100
+      
+      // Lógica específica para Peso (3 casas) vs Outros (2 casas)
+      const isWeight = name === 'peso_ton'
+      const divisor = isWeight ? 1000 : 100
+      const numberValue = Number(val) / divisor
       
       let formatted;
       if (isCurrency) {
@@ -40,8 +45,8 @@ function BigInput({
         }).format(numberValue)
       } else {
         formatted = new Intl.NumberFormat('pt-BR', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
+          minimumFractionDigits: isWeight ? 3 : 2,
+          maximumFractionDigits: isWeight ? 3 : 2
         }).format(numberValue)
       }
 
@@ -215,7 +220,7 @@ export default function Home() {
         ...operacionaisTratados,
         placa: formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase(),
         user_email: user.email,
-        peso_ton: round2(parseNumero(formValues.peso_ton)),
+        peso_ton: round3(parseNumero(formValues.peso_ton)),
         preco_ton: round2(parseCurrency(formValues.preco_ton)),
         abastecimentos_json: processados,
         valor: stats.despesas,
@@ -264,7 +269,7 @@ export default function Home() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <BigInput label="Valor/Ton" name="preco_ton" value={formValues.preco_ton} onChange={handleInputChange} isCurrency />
-                <BigInput label="Peso (Ton)" name="peso_ton" value={formValues.peso_ton} onChange={handleInputChange} placeholder="0,00" isDecimal />
+                <BigInput label="Peso (Ton)" name="peso_ton" value={formValues.peso_ton} onChange={handleInputChange} placeholder="0,000" isDecimal />
               </div>
             </div>
           </section>
@@ -302,24 +307,24 @@ export default function Home() {
           </section>
 
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl p-6">
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional'].map(campo => (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+               {['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional'].map(campo => (
                 <div key={campo}>
-                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{campo.replace('_', ' ')}</label>
-                   <input
-                    type="text"
-                    value={formValues[campo] || ''}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '');
-                      const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val) / 100);
-                      handleInputChange({ target: { name: campo, value: formatted } });
-                    }}
-                    placeholder="R$ 0,00"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-sm font-bold text-white outline-none focus:ring-2 ring-emerald-500/20"
-                  />
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{campo.replace('_', ' ')}</label>
+                    <input
+                     type="text"
+                     value={formValues[campo] || ''}
+                     onChange={(e) => {
+                       const val = e.target.value.replace(/\D/g, '');
+                       const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val) / 100);
+                       handleInputChange({ target: { name: campo, value: formatted } });
+                     }}
+                     placeholder="R$ 0,00"
+                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-sm font-bold text-white outline-none focus:ring-2 ring-emerald-500/20"
+                   />
                 </div>
-              ))}
-             </div>
+               ))}
+              </div>
           </section>
 
           {/* TOTAIS E SALVAR */}
