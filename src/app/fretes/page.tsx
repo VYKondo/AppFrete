@@ -29,6 +29,13 @@ export default function FretesPage() {
     diversos_operacional: "Diversos Operacional"
   }
 
+  // Função para limpar strings de moeda e converter em número
+  const parseCurrency = (v: any) => {
+    if (typeof v === 'number') return v;
+    const cleanValue = String(v || '0').replace(/\D/g, '');
+    return Number(cleanValue) / 100;
+  }
+
   useEffect(() => {
     async function checkAccess() {
       const { data, error } = await supabase.auth.getUser()
@@ -98,7 +105,10 @@ export default function FretesPage() {
         <div className="space-y-5">
           {fretes.map((frete) => {
             const paradas = frete.abastecimentos_json || [];
-            const gastoDiesel = paradas.reduce((acc: number, curr: any) => acc + (Number(curr.valor) || 0), 0);
+            
+            // CORREÇÃO: Usando parseCurrency para somar o diesel do JSON com segurança
+            const gastoDiesel = paradas.reduce((acc: number, curr: any) => acc + parseCurrency(curr.valor), 0);
+            
             const despesasOperacionaisAtivas = Object.keys(labelMap).filter(key => (Number(frete[key]) || 0) > 0);
             const totalOutrosGastos = despesasOperacionaisAtivas.reduce((acc, key) => acc + (Number(frete[key]) || 0), 0);
             
@@ -127,7 +137,6 @@ export default function FretesPage() {
                     </div>
                   </div>
 
-                  {/* BLOCO FINANCEIRO CORRIGIDO PARA RESPONSIVIDADE */}
                   <div className="flex flex-wrap md:flex-nowrap items-center gap-4 md:gap-6 pt-6 md:pt-0 border-t md:border-t-0 border-slate-800/50 w-full md:w-auto justify-between">
                     <div className="grid grid-cols-2 md:flex items-center gap-6 w-full md:w-auto">
                       <div className="text-right border-r border-slate-800 pr-4 md:pr-6">
@@ -157,7 +166,6 @@ export default function FretesPage() {
                 {expanded === frete.id && (
                   <div className="px-6 pb-8 animate-in fade-in slide-in-from-top-4 duration-300">
                     
-                    {/* SEÇÃO DE RECEITA DETALHADA */}
                     <div className="bg-blue-500/5 rounded-3xl border border-blue-500/20 overflow-hidden mb-6">
                         <div className="px-6 py-3 bg-blue-500/10 border-b border-blue-500/20 flex items-center">
                             <Banknote size={14} className="text-blue-400 mr-2" />
@@ -172,11 +180,9 @@ export default function FretesPage() {
                                 <span className="text-[9px] text-slate-500 uppercase font-black">Peso Total</span>
                                 <span className="text-sm font-bold text-slate-200">{frete.peso_ton} Ton</span>
                             </div>
-                            
                         </div>
                     </div>
 
-                    {/* TABELA DE ABASTECIMENTOS REORGANIZADA */}
                     <div className="bg-slate-950/40 rounded-3xl border border-slate-800/50 overflow-hidden mb-6">
                       <div className="px-6 py-3 bg-slate-800/30 border-b border-slate-800/50 flex items-center">
                         <Wallet size={14} className="text-emerald-500 mr-2" />
@@ -188,16 +194,13 @@ export default function FretesPage() {
                             <th className="px-6 py-3">Parada</th><th className="px-6 py-3">Valor</th><th className="px-6 py-3">Odômetro</th><th className="px-6 py-3">Volume</th><th className="px-6 py-3">Completou?</th><th className="px-6 py-3 text-right">Média</th>
                           </tr>
                         </thead>
-
                         <tbody className="text-xs">
                           {paradas.map((p: any, i: number) => (
                             <tr key={i} className="border-b border-slate-800/20 last:border-0">
                               <td className="px-6 py-3 text-slate-400">#0{i + 1}</td>
-                              <td className="px-6 py-3 text-red-400/80 font-medium">{formatCurrency(Number(p.valor) || 0)}</td>
+                              <td className="px-6 py-3 text-red-400/80 font-medium">{formatCurrency(parseCurrency(p.valor))}</td>
                               <td className="px-6 py-3">{p.odometro} km</td>
                               <td className="px-6 py-3">{p.volume} L</td>
-                              
-                              {/* --- ADICIONE O BLOCO ABAIXO --- */}
                               <td className="px-6 py-3">
                                 {p.completou ? (
                                   <span className="text-[9px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full border border-emerald-500/20 font-black uppercase">Sim</span>
@@ -205,8 +208,6 @@ export default function FretesPage() {
                                   <span className="text-[9px] bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase">Não</span>
                                 )}
                               </td>
-                              {/* ------------------------------- */}
-
                               <td className="px-6 py-3 text-right font-black text-emerald-500">
                                 {p.media_kml > 0 ? `${Number(p.media_kml).toFixed(2)}` : '--'}
                               </td>
@@ -216,7 +217,6 @@ export default function FretesPage() {
                       </table>
                     </div>
 
-                    {/* SEÇÃO DE OUTRAS DESPESAS */}
                     {despesasOperacionaisAtivas.length > 0 && (
                       <div className="bg-slate-950/40 rounded-3xl border border-slate-800/50 overflow-hidden mb-8">
                         <div className="px-6 py-3 bg-slate-800/30 border-b border-slate-800/50 flex items-center">

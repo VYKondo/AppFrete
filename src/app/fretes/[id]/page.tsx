@@ -5,7 +5,6 @@ import { useEffect, useState, useMemo, ChangeEvent, FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, Save, Truck, Fuel, Package, Trash2, CheckCircle2, Plus, Wrench } from 'lucide-react'
 
-// Interface para garantir que o TS aceite chaves dinâmicas nos custos
 interface FreteData {
   motorista: string;
   placa: string;
@@ -13,7 +12,7 @@ interface FreteData {
   peso_ton: number | string;
   preco_ton: number | string;
   odometro_atual: number;
-  [key: string]: any; // Permite campos como 'pedagio', 'mecanica', etc.
+  [key: string]: any;
 }
 
 export default function EditFretePage() {
@@ -32,9 +31,15 @@ export default function EditFretePage() {
     'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro', 'diversos_operacional'
   ]
 
+  // --- Funções de Formatação ---
   const formatCurrency = (value: any) => {
     const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / 100
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num || 0)
+  }
+
+  const formatDecimal = (value: any) => {
+    const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / 100
+    return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num || 0)
   }
 
   const parseCurrency = (v: any) => {
@@ -42,6 +47,8 @@ export default function EditFretePage() {
     const cleanValue = String(v).replace(/[^\d]/g, '')
     return cleanValue ? Number(cleanValue) / 100 : 0
   }
+
+  const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
 
   useEffect(() => {
     async function fetchFrete() {
@@ -72,7 +79,7 @@ export default function EditFretePage() {
     let litrosAcum = 0
 
     return abastecimentos.map((abs) => {
-      const vol = Number(abs.volume) || 0
+      const vol = parseNumero(abs.volume)
       const odo = Number(abs.odometro) || 0
       const comp = abs.completou
       const difKm = odo - lastOdo
@@ -86,7 +93,7 @@ export default function EditFretePage() {
 
   const stats = useMemo(() => {
     if (!formValues) return { despesas: 0, lucro: 0 }
-    const receita = (Number(formValues.peso_ton) || 0) * parseCurrency(formValues.preco_ton)
+    const receita = (parseNumero(formValues.peso_ton)) * parseCurrency(formValues.preco_ton)
     const custoDiesel = abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0)
     const outrosCustos = camposOperacionais.reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0)
     return { despesas: custoDiesel + outrosCustos, lucro: receita - (custoDiesel + outrosCustos) }
@@ -98,7 +105,7 @@ export default function EditFretePage() {
     setSaving(true)
     
     const paradasProntas = abastecimentosComMedia.map(abs => ({
-      volume: Number(abs.volume) || 0,
+      volume: parseNumero(abs.volume),
       odometro: Number(abs.odometro) || 0,
       valor: parseCurrency(abs.valor),
       completou: !!abs.completou,
@@ -108,10 +115,10 @@ export default function EditFretePage() {
     const ultimo = paradasProntas[paradasProntas.length - 1] || {}
     const dataToSave: any = {
       ...formValues,
-      peso_ton: Number(formValues.peso_ton) || 0,
+      peso_ton: parseNumero(formValues.peso_ton),
       preco_ton: parseCurrency(formValues.preco_ton),
       abastecimentos_json: paradasProntas,
-      valor: paradasProntas.reduce((acc, curr) => acc + curr.valor, 0),
+      valor: stats.despesas,
       odometro_atual: ultimo.odometro || formValues.odometro_atual,
       media_kml: ultimo.media_kml || 0,
     }
@@ -138,31 +145,24 @@ export default function EditFretePage() {
             </div>
           </div>
           <button type="button" onClick={() => router.back()} className="bg-slate-800 px-4 py-2 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all flex items-center gap-2 text-slate-300">
-            <ArrowLeft size={14}/> CANCELAR
+            <ArrowLeft size={14}/> VOLTAR
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} className="space-y-6 pb-24">
+        <form onSubmit={handleSubmit} className="space-y-6">
           
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl">
             <div className="bg-blue-700 px-6 py-3 flex justify-between items-center">
               <h2 className="text-sm font-black uppercase flex items-center gap-2"><Package size={18} /> Dados da Viagem</h2>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
-              <BigInput label="Motorista" value={formValues.motorista} onChange={(e: ChangeEvent<HTMLInputElement>) => setFormValues({...formValues, motorista: e.target.value})} placeholder="NOME DO MOTORISTA" required />
-              
-              <div className="relative">
-                <BigInput label="Placa" value={formValues.placa} onChange={(e: ChangeEvent<HTMLInputElement>) => setFormValues({...formValues, placa: e.target.value.toUpperCase()})} placeholder="AAA-0000" required 
-                  badge={odometroAnterior > 0 && <span className="bg-emerald-500/10 text-emerald-500 text-[9px] px-2 py-0.5 rounded-full border border-emerald-500/20 font-black">KM ANTERIOR: {odometroAnterior}</span>}
-                />
-                {odometroAnterior > 0 && <CheckCircle2 className="absolute right-4 bottom-4 text-emerald-500" size={20} />}
-              </div>
-
-              <BigInput label="Data" type="date" value={formValues.data_frete} onChange={(e: ChangeEvent<HTMLInputElement>) => setFormValues({...formValues, data_frete: e.target.value})} required />
+              <BigInput label="Motorista" value={formValues.motorista} onChange={(e: any) => setFormValues({...formValues, motorista: e.target.value})} placeholder="NOME DO MOTORISTA" required />
+              <BigInput label="Placa" value={formValues.placa} onChange={(e: any) => setFormValues({...formValues, placa: e.target.value.toUpperCase()})} placeholder="AAA-0000" required />
+              <BigInput label="Data" type="date" value={formValues.data_frete} onChange={(e: any) => setFormValues({...formValues, data_frete: e.target.value})} required />
               
               <div className="grid grid-cols-2 gap-4">
-                <BigInput label="Peso (Ton)" type="number" step="0.001" value={formValues.peso_ton} onChange={(e: ChangeEvent<HTMLInputElement>) => setFormValues({...formValues, peso_ton: e.target.value})} placeholder="0.00" />
-                <BigInput label="Valor/Ton" value={formatCurrency(formValues.preco_ton)} onChange={(e: ChangeEvent<HTMLInputElement>) => setFormValues({...formValues, preco_ton: e.target.value})} isCurrency />
+                <BigInput label="Peso (Ton)" value={formatDecimal(formValues.peso_ton)} onChange={(e: any) => setFormValues({...formValues, peso_ton: e.target.value})} isDecimal />
+                <BigInput label="Valor/Ton" value={formatCurrency(formValues.preco_ton)} onChange={(e: any) => setFormValues({...formValues, preco_ton: e.target.value})} isCurrency />
               </div>
             </div>
           </section>
@@ -176,19 +176,19 @@ export default function EditFretePage() {
               {abastecimentosComMedia.map((abs, index) => (
                 <div key={index} className="bg-slate-800/50 p-5 rounded-2xl border border-slate-700 relative space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <BigInput label="Valor Pago" value={formatCurrency(abs.valor)} onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                    <BigInput label="Valor Pago" value={formatCurrency(abs.valor)} onChange={(e: any) => {
                        const n = [...abastecimentos]; n[index].valor = e.target.value; setAbastecimentos(n);
                     }} isCurrency />
-                    <BigInput label="KM no Painel" value={abs.odometro} onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                    <BigInput label="KM no Painel" value={abs.odometro} onChange={(e: any) => {
                        const n = [...abastecimentos]; n[index].odometro = e.target.value; setAbastecimentos(n);
                     }} placeholder="0" />
-                    <BigInput label="Litros" value={abs.volume} onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                    <BigInput label="Litros" value={formatDecimal(abs.volume)} onChange={(e: any) => {
                        const n = [...abastecimentos]; n[index].volume = e.target.value; setAbastecimentos(n);
-                    }} placeholder="0.00" />
+                    }} isDecimal />
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
                     <label className="flex items-center gap-3 cursor-pointer group">
-                      <input type="checkbox" checked={abs.completou} onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                      <input type="checkbox" checked={abs.completou} onChange={(e: any) => {
                         const n = [...abastecimentos]; n[index].completou = e.target.checked; setAbastecimentos(n);
                       }} className="w-7 h-7 rounded-lg accent-emerald-500" />
                       <span className="text-xs font-black uppercase text-slate-300 group-hover:text-white">Encheu o Tanque?</span>
@@ -207,7 +207,7 @@ export default function EditFretePage() {
           </section>
 
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl p-6">
-              <h2 className="text-xs font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><Wrench size={16} /> Custos de Manutenção e Extras</h2>
+              <h2 className="text-xs font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><Wrench size={16} /> Manutenção e Extras</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {camposOperacionais.map(campo => (
                 <div key={campo}>
@@ -215,7 +215,7 @@ export default function EditFretePage() {
                    <input
                     type="text"
                     value={formatCurrency(formValues[campo])}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => setFormValues({...formValues, [campo]: e.target.value})}
+                    onChange={(e: any) => setFormValues({...formValues, [campo]: e.target.value})}
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-sm font-bold text-white outline-none focus:ring-2 ring-emerald-500/20"
                   />
                 </div>
@@ -223,7 +223,8 @@ export default function EditFretePage() {
              </div>
           </section>
 
-          <div className="sticky bottom-4 z-50">
+          {/* DISPLAY NO FINAL DA PÁGINA (SEM FIXO OU STICKY) */}
+          <div className="pt-6">
             <div className="bg-slate-900 p-4 rounded-3xl border-2 border-emerald-500 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-6 w-full md:w-auto justify-around md:justify-start text-white">
                 <div>
@@ -247,18 +248,14 @@ export default function EditFretePage() {
   )
 }
 
-// COMPONENTE BIG INPUT REVISADO COM TIPAGEM CORRETA
-interface BigInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label: string;
-  badge?: React.ReactNode;
-  isCurrency?: boolean;
-}
-
-function BigInput({ label, badge, isCurrency, onChange, ...props }: BigInputProps) {
+function BigInput({ label, badge, isCurrency, isDecimal, onChange, ...props }: any) {
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (isCurrency) {
+    if (isCurrency || isDecimal) {
       const val = e.target.value.replace(/\D/g, '');
-      const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val) / 100);
+      const num = Number(val) / 100;
+      const formatted = isCurrency 
+        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num)
+        : new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
       e.target.value = formatted;
     }
     if (onChange) onChange(e);
@@ -277,4 +274,4 @@ function BigInput({ label, badge, isCurrency, onChange, ...props }: BigInputProp
       />
     </div>
   )
-}
+}     
