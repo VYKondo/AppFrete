@@ -105,7 +105,7 @@ export default function Home() {
     lavagem: '',
     peca: '',
     caixinha: '',
-    filtro: '',
+    cartao: '',
     diversos_operacional: '',
   })
 
@@ -182,7 +182,7 @@ export default function Home() {
   const stats = useMemo(() => {
     const receita = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
     const diesel = round2(abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0))
-    const camposOp = ['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro', 'diversos_operacional']
+    const camposOp = ['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional']
     const despesasOp = round2(camposOp.reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0))
     const despesasTotais = round2(diesel + despesasOp)
     const lucro = round2(receita - despesasTotais)
@@ -203,7 +203,7 @@ export default function Home() {
       if (!user) throw new Error('Usuário não autenticado')
       
       const operacionaisTratados: any = {}
-      const camposFin = ['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro', 'diversos_operacional']
+      const camposFin = ['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional']
       camposFin.forEach(c => { operacionaisTratados[c] = round2(parseCurrency(formValues[c])) })
       
       const processados = abastecimentosComMedia.map(a => ({
@@ -303,7 +303,7 @@ export default function Home() {
 
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl p-6">
              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro', 'diversos_operacional'].map(campo => (
+              {['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional'].map(campo => (
                 <div key={campo}>
                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{campo.replace('_', ' ')}</label>
                    <input

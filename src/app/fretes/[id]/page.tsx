@@ -28,7 +28,7 @@ export default function EditFretePage() {
 
   const camposOperacionais = [
     'pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 
-    'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro', 'diversos_operacional'
+    'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional'
   ]
 
   // --- Funções de Formatação ---
