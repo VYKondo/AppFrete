@@ -63,7 +63,7 @@ export default function LoginPage() {
             <TruckIcon size={40} />
           </div>
           <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-            NSA Logística
+            NSS Logística
           </h1>
           <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Acesso Restrito</p>
         </div>
