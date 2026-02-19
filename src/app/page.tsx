@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 import Swal from 'sweetalert2'
 import {
   Truck, Fuel, Package,
-  CheckCircle2, Trash2, Plus, Save, History
+  CheckCircle2, Trash2, Plus, Save, History, AlertTriangle, X
 } from 'lucide-react'
 
 function BigInput({
@@ -19,7 +19,7 @@ function BigInput({
   required = false,
   badge = null
 }: any) {
-
+  
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isCurrency) {
       const val = e.target.value.replace(/\D/g, '')
@@ -60,6 +60,7 @@ export default function Home() {
   const router = useRouter()
 
   const [loading, setLoading] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false) // MODAL ESTADO
   const [role, setRole] = useState<string | 'loading'>('loading')
   const [userName, setUserName] = useState('')
   const [hydrated, setHydrated] = useState(false)
@@ -166,26 +167,42 @@ export default function Home() {
       .replace(/[^0-9.]/g, '')
     ) || 0
 
-  // 📊 MÉDIA KML
+  // 📊 MÉDIA KML (LÓGICA DE ACUMULAÇÃO)
   const abastecimentosComMedia = useMemo(() => {
-    let odoAnterior = odometroAnteriorBanco ?? 0
+    // Referência de quilometragem do último tanque cheio
+    let ultimoOdoCheio = odometroAnteriorBanco ?? 0;
+    // Acumulador de litros para quando houver abastecimentos parciais
+    let volumeAcumulado = 0;
 
     return abastecimentos.map((abs) => {
-      const odoAtual = parseNumero(abs.odometro)
-      const volume = parseNumero(abs.volume)
-      let media = 0
+      const odoAtual = parseNumero(abs.odometro);
+      const volumeAtual = parseNumero(abs.volume);
+      
+      // Sempre somamos o volume atual ao que já estava acumulado
+      volumeAcumulado += volumeAtual;
 
-      if (odoAtual > 0) {
-        const kmTrecho = odoAtual - odoAnterior
-        if (abs.completou && volume > 0) {
-          media = kmTrecho / volume
+      let media = 0;
+
+      // Só calculamos a média se o motorista marcou que 'COMPLETOU'
+      if (abs.completou && odoAtual > 0 && volumeAcumulado > 0) {
+        const kmPercorrida = odoAtual - ultimoOdoCheio;
+        
+        if (kmPercorrida > 0) {
+          media = kmPercorrida / volumeAcumulado;
         }
-        odoAnterior = odoAtual
+
+        // IMPORTANTE: Como completou o tanque agora, este odômetro 
+        // vira a nova referência para o próximo cálculo e o volume zera.
+        ultimoOdoCheio = odoAtual;
+        volumeAcumulado = 0;
       }
 
-      return { ...abs, media_kml: media }
-    })
-  }, [abastecimentos, odometroAnteriorBanco])
+      return { 
+        ...abs, 
+        media_kml: media 
+      };
+    });
+  }, [abastecimentos, odometroAnteriorBanco]);
 
   const stats = useMemo(() => {
     const receita =
@@ -214,21 +231,24 @@ export default function Home() {
     }
   }, [formValues, abastecimentos])
 
-  async function handleSubmit(e: React.FormEvent) {
+  // 1. GATILHO DO MODAL
+  function handleTrySubmit(e: React.FormEvent) {
     e.preventDefault()
-
     if (!formValues.placa || !formValues.motorista) {
       return Swal.fire('Atenção', 'Preencha placa e motorista', 'warning')
     }
+    setIsModalOpen(true)
+  }
 
+  // 2. SALVAMENTO REAL (DENTRO DO MODAL)
+  async function handleConfirmSave() {
+    setIsModalOpen(false)
     setLoading(true)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado')
 
-      // --- TRATAMENTO DOS CAMPOS NUMÉRICOS ---
-      // Criamos uma cópia para não sujar o estado visual do form
       const operacionaisTratados: any = {}
       const camposFinanceiros = [
         'pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 
@@ -237,7 +257,6 @@ export default function Home() {
       ]
 
       camposFinanceiros.forEach(campo => {
-        // Se estiver vazio ou for apenas máscara, vira 0, senão converte
         operacionaisTratados[campo] = parseCurrency(formValues[campo]) || 0
       })
 
@@ -246,13 +265,13 @@ export default function Home() {
 
       const payload = {
         ...formValues,
-        ...operacionaisTratados, // Sobrescreve as strings vazias por números (0)
+        ...operacionaisTratados,
         placa: formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase(),
         user_email: user.email,
         peso_ton: parseNumero(formValues.peso_ton) || 0,
         preco_ton: parseCurrency(formValues.preco_ton) || 0,
         abastecimentos_json: processados,
-        valor: stats.despesas, // Envia o total calculado
+        valor: stats.despesas,
         odometro_atual: ultimoOdo,
         media_kml: [...processados].reverse().find(a => a.media_kml > 0)?.media_kml || 0
       }
@@ -261,11 +280,9 @@ export default function Home() {
 
       if (error) throw error
 
-    // ... resto do seu código (Swal e reload)
-
       await Swal.fire({
         title: 'Sucesso!',
-        text: 'Operação salva.',
+        text: 'Operação salva com sucesso.',
         icon: 'success',
         background: '#0f172a',
         color: '#fff'
@@ -284,6 +301,7 @@ export default function Home() {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-emerald-500 font-bold animate-pulse">
       CARREGANDO...
     </div>
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-3 md:p-6 font-sans">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -316,7 +334,7 @@ export default function Home() {
           )}
         </header>
 
-        <form onSubmit={handleSubmit} className="space-y-6 pb-24">
+        <form onSubmit={handleTrySubmit} className="space-y-6 pb-24">
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl">
             <div className="bg-blue-700 px-6 py-3 flex justify-between items-center">
               <h2 className="text-sm font-black uppercase flex items-center gap-2"><Package size={18} /> Dados da Viagem</h2>
@@ -324,7 +342,6 @@ export default function Home() {
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
               <BigInput label="Motorista" name="motorista" value={formValues.motorista} onChange={handleInputChange} placeholder="NOME DO MOTORISTA" required />
               
-              {/* CAMPO PLACA COM O ODÔMETRO ANTERIOR RESTAURADO */}
               <div className="relative">
                 <BigInput 
                   label="Placa" 
@@ -387,7 +404,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* ... resto dos gastos operacionais ... */}
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl p-6">
              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'filtro', 'diversos_operacional'].map(campo => (
@@ -409,7 +425,8 @@ export default function Home() {
              </div>
           </section>
 
-          <div className="sticky bottom-4 z-50">
+          {/* BARRA FIXA */}
+          <div className="sticky bottom-4 z-40">
             <div className="bg-slate-900 p-4 rounded-3xl border-2 border-emerald-500 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-6 w-full md:w-auto justify-around md:justify-start text-white">
                 <div>
@@ -422,12 +439,74 @@ export default function Home() {
                   <p className="text-3xl font-black">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.lucro)}</p>
                 </div>
               </div>
-              <button type="submit" disabled={loading} className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-500 text-white px-12 py-5 rounded-2xl font-black uppercase tracking-widest text-sm shadow-lg flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 transition-all">
+
+              <button 
+                type="submit" 
+                disabled={loading} 
+                className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-500 text-white px-12 py-5 rounded-2xl font-black uppercase tracking-widest text-sm shadow-lg flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 transition-all"
+              >
                 {loading ? <div className="h-5 w-5 border-4 border-white/30 border-t-white rounded-full animate-spin" /> : <><Save size={20}/> SALVAR OPERAÇÃO</>}
               </button>
             </div>
           </div>
         </form>
+
+
+        {/* MODAL POPUP DE CONFIRMAÇÃO - FOCO EM ACESSIBILIDADE E CLAREZA */}
+        {isModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 bg-slate-950/95 backdrop-blur-md">
+            <div className="bg-slate-900 border-4 border-emerald-500 w-full max-w-lg rounded-[3rem] shadow-[0_0_50px_rgba(16,185,129,0.2)] overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-8 md:p-12 text-center">
+                
+                {/* ÍCONE GRANDE E ALERTA */}
+                <div className="flex justify-center mb-6">
+                  <div className="bg-emerald-500 text-slate-900 p-5 rounded-full animate-bounce">
+                    <CheckCircle2 size={48} strokeWidth={3} />
+                  </div>
+                </div>
+
+                <h3 className="text-4xl md:text-5xl font-black text-white uppercase leading-tight mb-6">
+                  QUER MESMO <br/> SALVAR?
+                </h3>
+                
+                <div className="bg-slate-800 p-6 rounded-3xl border-2 border-slate-700 mb-8 space-y-4">
+                  <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Confira os dados:</p>
+                  
+                  <div className="flex flex-col gap-2">
+                    <div className="flex justify-between items-center border-b border-slate-700 pb-2">
+                      <span className="text-slate-400 font-bold uppercase text-sm">Placa:</span>
+                      <span className="text-2xl font-black text-white tracking-widest">{formValues.placa}</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center pt-2">
+                      <span className="text-slate-400 font-bold uppercase text-sm">lucro Líquido:</span>
+                      <span className="text-3xl font-black text-emerald-400">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.lucro)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* BOTÕES GIGANTES PARA DEDOS GRANDES / DIFICULDADE MOTORA */}
+                <div className="flex flex-col gap-4">
+                  <button 
+                    onClick={handleConfirmSave}
+                    className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-8 rounded-3xl font-black uppercase tracking-tighter text-2xl shadow-[0_10px_0_rgb(5,150,105)] active:translate-y-1 active:shadow-none transition-all"
+                  >
+                    SIM! ENVIAR FRETE
+                  </button>
+                  
+                  <button 
+                    onClick={() => setIsModalOpen(false)}
+                    className="w-full bg-transparent border-2 border-slate-700 text-slate-500 py-5 rounded-2xl font-black uppercase tracking-widest text-sm hover:text-white transition-all"
+                  >
+                    AINDA NÃO
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
