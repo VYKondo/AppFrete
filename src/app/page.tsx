@@ -12,6 +12,8 @@ import {
   Wrench, Settings, Construction
 } from 'lucide-react'
 
+const STORAGE_KEY = 'rascunho_frete_pwa'
+
 // Utilitários para precisão matemática
 const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100
 const round3 = (num: number) => Math.round((num + Number.EPSILON) * 1000) / 1000
@@ -31,8 +33,6 @@ function BigInput({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isCurrency || isDecimal) {
       const val = e.target.value.replace(/\D/g, '')
-      
-      // Lógica específica para Peso (3 casas) vs Outros (2 casas)
       const isWeight = name === 'peso_ton'
       const divisor = isWeight ? 1000 : 100
       const numberValue = Number(val) / divisor
@@ -120,6 +120,32 @@ export default function Home() {
 
   const parseCurrency = (v: any) => Number(String(v || '0').replace(/\D/g, '')) / 100
   const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
+
+  // --- LÓGICA DE AUTO-SAVE (LOCALSTORAGE) ---
+  
+  // 1. Recuperar dados ao montar o componente
+  useEffect(() => {
+    const rascunhoSalvo = localStorage.getItem(STORAGE_KEY)
+    if (rascunhoSalvo) {
+      try {
+        const { formValues: f, abastecimentos: a } = JSON.parse(rascunhoSalvo)
+        if (f) setFormValues(f)
+        if (a) setAbastecimentos(a)
+      } catch (e) {
+        console.error("Erro ao recuperar rascunho", e)
+      }
+    }
+  }, [])
+
+  // 2. Salvar automaticamente sempre que houver mudança
+  useEffect(() => {
+    if (hydrated) {
+      const dadosParaSalvar = { formValues, abastecimentos }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dadosParaSalvar))
+    }
+  }, [formValues, abastecimentos, hydrated])
+
+  // --- FIM DA LÓGICA DE AUTO-SAVE ---
 
   const handleInputChange = useCallback((e: any) => {
     const { name, value } = e.target
@@ -230,6 +256,10 @@ export default function Home() {
       
       const { error } = await supabase.from('fretes').insert([payload])
       if (error) throw error
+
+      // LIMPA O RASCUNHO APÓS SUCESSO
+      localStorage.removeItem(STORAGE_KEY)
+
       await Swal.fire({ title: 'Sucesso!', text: 'Operação salva.', icon: 'success', background: '#0f172a', color: '#fff' })
       window.location.reload()
     } catch (err: any) { Swal.fire('Erro', err.message, 'error') } finally { setLoading(false) }
