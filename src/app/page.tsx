@@ -425,27 +425,40 @@ export default function Home() {
              </div>
           </section>
 
-          {/* BARRA FIXA */}
-          <div className="sticky bottom-4 z-40">
-            <div className="bg-slate-900 p-4 rounded-3xl border-2 border-emerald-500 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-6 w-full md:w-auto justify-around md:justify-start text-white">
+          {/* RODAPÉ DE TOTAIS E AÇÃO (NÃO FIXO) */}
+          <div className="mt-8 mb-4">
+            <div className="bg-slate-900 p-6 rounded-3xl border-2 border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+              <div className="flex items-center gap-8 w-full md:w-auto justify-around md:justify-start text-white">
                 <div>
-                  <p className="text-[9px] font-black text-slate-500 uppercase">Gasto Total</p>
-                  <p className="text-lg font-black text-red-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.despesas)}</p>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Gasto Total</p>
+                  <p className="text-xl font-black text-red-400">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.despesas)}
+                  </p>
                 </div>
-                <div className="h-10 w-[1px] bg-slate-800 hidden md:block" />
+                
+                <div className="h-12 w-[1px] bg-slate-800 hidden md:block" />
+                
                 <div>
-                  <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Lucro Líquido</p>
-                  <p className="text-3xl font-black">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.lucro)}</p>
+                  <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Lucro Líquido</p>
+                  <p className="text-3xl font-black">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.lucro)}
+                  </p>
                 </div>
               </div>
 
               <button 
                 type="submit" 
                 disabled={loading} 
-                className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-500 text-white px-12 py-5 rounded-2xl font-black uppercase tracking-widest text-sm shadow-lg flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 transition-all"
+                className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-500 text-white px-12 py-5 rounded-2xl font-black uppercase tracking-widest text-sm shadow-lg flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 transition-all border-b-4 border-emerald-800"
               >
-                {loading ? <div className="h-5 w-5 border-4 border-white/30 border-t-white rounded-full animate-spin" /> : <><Save size={20}/> SALVAR OPERAÇÃO</>}
+                {loading ? (
+                  <div className="h-5 w-5 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Save size={20}/> 
+                    SALVAR OPERAÇÃO
+                  </>
+                )}
               </button>
             </div>
           </div>
