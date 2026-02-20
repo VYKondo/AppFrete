@@ -13,13 +13,14 @@ export default function FretesPage() {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
+  // Mapeamento: Chave do Banco (sem acento) -> Texto na Tela (com acento)
   const labelMap: { [key: string]: string } = {
     pedagio: "Pedágio",
     mecanica: "Mecânica",
     eletrica: "Elétrica",
     borracharia: "Borracharia",
-    solda: "Solda",
-    graxa: "Graxa",
+    diferenca_frete: "Diferença Frete", // Corrigido para bater com o Supabase
+    quebra: "Quebra",
     patio: "Pátio",
     limpeza: "Limpeza",
     lavagem: "Lavagem",
@@ -29,7 +30,6 @@ export default function FretesPage() {
     diversos_operacional: "Diversos Operacional"
   }
 
-  // Função para limpar strings de moeda e converter em número
   const parseCurrency = (v: any) => {
     if (typeof v === 'number') return v;
     const cleanValue = String(v || '0').replace(/\D/g, '');
@@ -105,10 +105,9 @@ export default function FretesPage() {
         <div className="space-y-5">
           {fretes.map((frete) => {
             const paradas = frete.abastecimentos_json || [];
-            
-            // CORREÇÃO: Usando parseCurrency para somar o diesel do JSON com segurança
             const gastoDiesel = paradas.reduce((acc: number, curr: any) => acc + parseCurrency(curr.valor), 0);
             
+            // Aqui filtramos as despesas operacionais usando as chaves sem acento
             const despesasOperacionaisAtivas = Object.keys(labelMap).filter(key => (Number(frete[key]) || 0) > 0);
             const totalOutrosGastos = despesasOperacionaisAtivas.reduce((acc, key) => acc + (Number(frete[key]) || 0), 0);
             
@@ -183,8 +182,6 @@ export default function FretesPage() {
                         </div>
                     </div>
                     
-                    {/* ... dentro do seu map de fretes ... */}
-
                     <div className="bg-slate-950/40 rounded-3xl border border-slate-800/50 overflow-hidden mb-6">
                       <div className="px-6 py-3 bg-slate-800/30 border-b border-slate-800/50 flex items-center">
                         <Wallet size={14} className="text-emerald-500 mr-2" />
@@ -236,7 +233,10 @@ export default function FretesPage() {
                         <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
                           {despesasOperacionaisAtivas.map(key => (
                             <div key={key} className="flex flex-col">
-                              <span className="text-[9px] text-slate-500 uppercase font-black">{labelMap[key]}</span>
+                              {/* Aqui usamos o labelMap para mostrar o nome com acento */}
+                              <span className="text-[9px] text-slate-500 uppercase font-black">
+                                {labelMap[key] || key}
+                              </span>
                               <span className="text-sm font-bold text-slate-200">{formatCurrency(Number(frete[key]))}</span>
                             </div>
                           ))}

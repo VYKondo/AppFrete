@@ -9,16 +9,32 @@ import Swal from 'sweetalert2'
 import {
   Truck, Fuel, Package,
   CheckCircle2, Trash2, Plus, Save, History, Fuel as FuelIcon,
-  Wrench, Settings, Construction
 } from 'lucide-react'
 
 const STORAGE_KEY = 'rascunho_frete_pwa'
 
-// Utilitários para precisão matemática
+// Mapeamento para exibir nomes bonitos na interface enquanto o código usa nomes técnicos
+const LABELS_CAMPOS: Record<string, string> = {
+  pedagio: 'Pedágio',
+  mecanica: 'Mecânica',
+  eletrica: 'Elétrica',
+  borracharia: 'Borracharia',
+  diferenca_frete: 'Diferença Frete',
+  quebra: 'Quebra',
+  patio: 'Pátio',
+  limpeza: 'Limpeza',
+  lavagem: 'Lavagem',
+  peca: 'Peça',
+  caixinha: 'Caixinha',
+  cartao: 'Cartão',
+  diversos_operacional: 'Diversos Operacional'
+};
+
+const CAMPOS_OPERACIONAIS = Object.keys(LABELS_CAMPOS);
+
 const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100
 const round3 = (num: number) => Math.round((num + Number.EPSILON) * 1000) / 1000
 
-// COMPONENTE BIGINPUT
 function BigInput({
   label, value, onChange, name,
   type = "text",
@@ -103,8 +119,8 @@ export default function Home() {
     mecanica: '',
     eletrica: '',
     borracharia: '',
-    solda: '',
-    graxa: '',
+    diferenca_frete: '', // Corrigido para sem acento
+    quebra: '',
     patio: '',
     limpeza: '',
     lavagem: '',
@@ -121,9 +137,6 @@ export default function Home() {
   const parseCurrency = (v: any) => Number(String(v || '0').replace(/\D/g, '')) / 100
   const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
 
-  // --- LÓGICA DE AUTO-SAVE (LOCALSTORAGE) ---
-  
-  // 1. Recuperar dados ao montar o componente
   useEffect(() => {
     const rascunhoSalvo = localStorage.getItem(STORAGE_KEY)
     if (rascunhoSalvo) {
@@ -137,15 +150,12 @@ export default function Home() {
     }
   }, [])
 
-  // 2. Salvar automaticamente sempre que houver mudança
   useEffect(() => {
     if (hydrated) {
       const dadosParaSalvar = { formValues, abastecimentos }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dadosParaSalvar))
     }
   }, [formValues, abastecimentos, hydrated])
-
-  // --- FIM DA LÓGICA DE AUTO-SAVE ---
 
   const handleInputChange = useCallback((e: any) => {
     const { name, value } = e.target
@@ -213,8 +223,7 @@ export default function Home() {
   const stats = useMemo(() => {
     const receita = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
     const diesel = round2(abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0))
-    const camposOp = ['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional']
-    const despesasOp = round2(camposOp.reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0))
+    const despesasOp = round2(CAMPOS_OPERACIONAIS.reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0))
     const despesasTotais = round2(diesel + despesasOp)
     const lucro = round2(receita - despesasTotais)
     return { receita, despesas: despesasTotais, lucro }
@@ -234,11 +243,15 @@ export default function Home() {
       if (!user) throw new Error('Usuário não autenticado')
       
       const operacionaisTratados: any = {}
-      const camposFin = ['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional']
-      camposFin.forEach(c => { operacionaisTratados[c] = round2(parseCurrency(formValues[c])) })
+      CAMPOS_OPERACIONAIS.forEach(c => { 
+        operacionaisTratados[c] = round2(parseCurrency(formValues[c])) 
+      })
       
       const processados = abastecimentosComMedia.map(a => ({
-        ...a, volume: round2(parseNumero(a.volume)), valor: round2(parseCurrency(a.valor)), media_kml: round2(a.media_kml)
+        ...a, 
+        volume: round2(parseNumero(a.volume)), 
+        valor: round2(parseCurrency(a.valor)), 
+        media_kml: round2(a.media_kml)
       }))
 
       const payload = {
@@ -257,12 +270,14 @@ export default function Home() {
       const { error } = await supabase.from('fretes').insert([payload])
       if (error) throw error
 
-      // LIMPA O RASCUNHO APÓS SUCESSO
       localStorage.removeItem(STORAGE_KEY)
-
       await Swal.fire({ title: 'Sucesso!', text: 'Operação salva.', icon: 'success', background: '#0f172a', color: '#fff' })
       window.location.reload()
-    } catch (err: any) { Swal.fire('Erro', err.message, 'error') } finally { setLoading(false) }
+    } catch (err: any) { 
+      Swal.fire('Erro', err.message, 'error') 
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   if (!hydrated || role === 'loading') return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-emerald-500 font-bold animate-pulse">CARREGANDO...</div>
@@ -286,7 +301,6 @@ export default function Home() {
         </header>
 
         <form onSubmit={handleTrySubmit} className="space-y-6">
-          {/* SEÇÃO 1: DADOS DA VIAGEM */}
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl">
             <div className="bg-blue-700 px-6 py-3"><h2 className="text-sm font-black uppercase flex items-center gap-2"><Package size={18} /> Dados da Viagem</h2></div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -304,7 +318,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* SEÇÃO 2: ABASTECIMENTO */}
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl">
             <div className="bg-emerald-700 px-6 py-3 flex justify-between items-center">
               <h2 className="text-sm font-black uppercase flex items-center gap-2"><FuelIcon size={18} /> Abastecimento</h2>
@@ -338,11 +351,15 @@ export default function Home() {
 
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl p-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-               {['pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional'].map(campo => (
+               {CAMPOS_OPERACIONAIS.map(campo => (
                 <div key={campo}>
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{campo.replace('_', ' ')}</label>
+                    {/* Aqui exibimos o label acentuado através do objeto de mapeamento */}
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">
+                      {LABELS_CAMPOS[campo]}
+                    </label>
                     <input
                      type="text"
+                     name={campo}
                      value={formValues[campo] || ''}
                      onChange={(e) => {
                        const val = e.target.value.replace(/\D/g, '');
@@ -357,7 +374,6 @@ export default function Home() {
               </div>
           </section>
 
-          {/* TOTAIS E SALVAR */}
           <div className="pt-4">
             <div className="bg-slate-900 p-6 rounded-3xl border-2 border-emerald-500 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
               <div className="flex items-center gap-8 w-full md:w-auto justify-around md:justify-start text-white">

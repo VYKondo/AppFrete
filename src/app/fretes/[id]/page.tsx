@@ -27,7 +27,7 @@ export default function EditFretePage() {
   const [odometroAnterior, setOdometroAnterior] = useState(0)
 
   const camposOperacionais = [
-    'pedagio', 'mecanica', 'eletrica', 'borracharia', 'solda', 'graxa', 
+    'pedagio', 'mecanica', 'eletrica', 'borracharia', 'diferenca_frete', 'quebra', 
     'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional'
   ]
 
