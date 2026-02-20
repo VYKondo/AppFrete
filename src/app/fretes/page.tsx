@@ -182,39 +182,49 @@ export default function FretesPage() {
                             </div>
                         </div>
                     </div>
+                    
+                    {/* ... dentro do seu map de fretes ... */}
 
                     <div className="bg-slate-950/40 rounded-3xl border border-slate-800/50 overflow-hidden mb-6">
                       <div className="px-6 py-3 bg-slate-800/30 border-b border-slate-800/50 flex items-center">
                         <Wallet size={14} className="text-emerald-500 mr-2" />
                         <span className="text-[10px] font-black uppercase">Detalhamento Diesel</span>
                       </div>
-                      <table className="w-full text-left">
-                        <thead>
-                          <tr className="text-[9px] uppercase text-slate-500 border-b border-slate-800/50">
-                            <th className="px-6 py-3">Parada</th><th className="px-6 py-3">Valor</th><th className="px-6 py-3">Odômetro</th><th className="px-6 py-3">Volume</th><th className="px-6 py-3">Completou?</th><th className="px-6 py-3 text-right">Média</th>
-                          </tr>
-                        </thead>
-                        <tbody className="text-xs">
-                          {paradas.map((p: any, i: number) => (
-                            <tr key={i} className="border-b border-slate-800/20 last:border-0">
-                              <td className="px-6 py-3 text-slate-400">#0{i + 1}</td>
-                              <td className="px-6 py-3 text-red-400/80 font-medium">{formatCurrency(parseCurrency(p.valor))}</td>
-                              <td className="px-6 py-3">{p.odometro} km</td>
-                              <td className="px-6 py-3">{p.volume} L</td>
-                              <td className="px-6 py-3">
-                                {p.completou ? (
-                                  <span className="text-[9px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full border border-emerald-500/20 font-black uppercase">Sim</span>
-                                ) : (
-                                  <span className="text-[9px] bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase">Não</span>
-                                )}
-                              </td>
-                              <td className="px-6 py-3 text-right font-black text-emerald-500">
-                                {p.media_kml > 0 ? `${Number(p.media_kml).toFixed(2)}` : '--'}
-                              </td>
+                      
+                      <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-left min-w-[600px] border-collapse">
+                          <thead>
+                            <tr className="text-[9px] uppercase text-slate-500 border-b border-slate-800/50">
+                              <th className="px-6 py-3">Parada</th>
+                              <th className="px-6 py-3">Valor</th>
+                              <th className="px-6 py-3">Odômetro</th>
+                              <th className="px-6 py-3">Volume</th>
+                              <th className="px-6 py-3">Completou?</th>
+                              <th className="px-6 py-3 text-right">Média</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="text-xs">
+                            {paradas.map((p: any, i: number) => (
+                              <tr key={i} className="border-b border-slate-800/20 last:border-0">
+                                <td className="px-6 py-3 text-slate-400 whitespace-nowrap">#0{i + 1}</td>
+                                <td className="px-6 py-3 text-red-400/80 font-medium whitespace-nowrap">{formatCurrency(parseCurrency(p.valor))}</td>
+                                <td className="px-6 py-3 whitespace-nowrap">{p.odometro} km</td>
+                                <td className="px-6 py-3 whitespace-nowrap">{p.volume} L</td>
+                                <td className="px-6 py-3">
+                                  {p.completou ? (
+                                    <span className="text-[9px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full border border-emerald-500/20 font-black uppercase">Sim</span>
+                                  ) : (
+                                    <span className="text-[9px] bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase">Não</span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-3 text-right font-black text-emerald-500 whitespace-nowrap">
+                                  {p.media_kml > 0 ? `${Number(p.media_kml).toFixed(2)}` : '--'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
 
                     {despesasOperacionaisAtivas.length > 0 && (
