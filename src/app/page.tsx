@@ -12,8 +12,9 @@ import {
 } from 'lucide-react'
 
 const STORAGE_KEY = 'rascunho_frete_pwa'
+// ALTERE ESTA VERSÃO SEMPRE QUE FIZER UM DEPLOY QUE MUDE NOMES DE CAMPOS
+const APP_VERSION = '1.0.1' 
 
-// Mapeamento para exibir nomes bonitos na interface enquanto o código usa nomes técnicos
 const LABELS_CAMPOS: Record<string, string> = {
   pedagio: 'Pedágio',
   mecanica: 'Mecânica',
@@ -119,7 +120,7 @@ export default function Home() {
     mecanica: '',
     eletrica: '',
     borracharia: '',
-    diferenca_frete: '', // Corrigido para sem acento
+    diferenca_frete: '', 
     quebra: '',
     patio: '',
     limpeza: '',
@@ -137,7 +138,17 @@ export default function Home() {
   const parseCurrency = (v: any) => Number(String(v || '0').replace(/\D/g, '')) / 100
   const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
 
+  // LÓGICA DE LIMPEZA POR VERSÃO
   useEffect(() => {
+    const lastVersion = localStorage.getItem('app_version')
+    
+    // Se a versão mudou ou não existe, limpa o rascunho
+    if (lastVersion !== APP_VERSION) {
+      localStorage.removeItem(STORAGE_KEY)
+      localStorage.setItem('app_version', APP_VERSION)
+      console.log(`Versão atualizada para ${APP_VERSION}. Cache de rascunho limpo.`)
+    }
+
     const rascunhoSalvo = localStorage.getItem(STORAGE_KEY)
     if (rascunhoSalvo) {
       try {
@@ -353,7 +364,6 @@ export default function Home() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                {CAMPOS_OPERACIONAIS.map(campo => (
                 <div key={campo}>
-                    {/* Aqui exibimos o label acentuado através do objeto de mapeamento */}
                     <label className="text-[10px] font-black text-slate-500 uppercase ml-1">
                       {LABELS_CAMPOS[campo]}
                     </label>

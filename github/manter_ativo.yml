@@ -1,0 +1,18 @@
+name: Manter Supabase Ativo
+
+on:
+  schedule:
+    # Roda às 00:00 de cada 3 dias (o limite é 7, então 3 é seguro)
+    - cron: '0 0 */3 * *'
+  # Permite que você rode manualmente pelo botão no GitHub para testar
+  workflow_dispatch: 
+
+jobs:
+  ping_db:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Realizar consulta no banco de dados
+        run: |
+          curl -i -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/fretes?select=id&limit=1" \
+          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
