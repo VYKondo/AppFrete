@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState, useMemo, ChangeEvent, FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Save, Truck, Fuel, Package, Trash2, CheckCircle2, Plus, Wrench } from 'lucide-react'
+import { ArrowLeft, Save, Truck, Fuel, Package, Trash2, Plus, Wrench } from 'lucide-react'
 
 interface FreteData {
   motorista: string;
@@ -14,6 +14,9 @@ interface FreteData {
   odometro_atual: number;
   [key: string]: any;
 }
+
+// Auxiliar para arredondamento
+const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
 
 export default function EditFretePage() {
   const router = useRouter()
@@ -31,16 +34,22 @@ export default function EditFretePage() {
     'patio', 'limpeza', 'lavagem', 'peca', 'caixinha', 'cartao', 'diversos_operacional'
   ]
 
-  // --- Funções de Formatação ---
+  // --- Funções de Formatação Corrigidas (Resolvem o x100) ---
   const formatCurrency = (value: any) => {
-    const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / 100
+    if (value === null || value === undefined || value === '') return 'R$ 0,00';
+    const num = typeof value === 'number' 
+      ? value 
+      : Number(String(value).replace(/\D/g, '')) / 100;
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num || 0)
   }
 
-  // Ajustado para aceitar uma flag de peso (3 casas)
   const formatDecimal = (value: any, isWeight = false) => {
-    const divisor = isWeight ? 1000 : 100
-    const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / divisor
+    if (value === null || value === undefined || value === '') return isWeight ? '0,000' : '0,00';
+    const divisor = isWeight ? 1000 : 100;
+    const num = typeof value === 'number' 
+      ? value 
+      : Number(String(value).replace(/\D/g, '')) / divisor;
+    
     return new Intl.NumberFormat('pt-BR', { 
       minimumFractionDigits: isWeight ? 3 : 2, 
       maximumFractionDigits: isWeight ? 3 : 2 
@@ -53,7 +62,10 @@ export default function EditFretePage() {
     return cleanValue ? Number(cleanValue) / 100 : 0
   }
 
-  const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
+  const parseNumero = (v: any) => {
+    if (typeof v === 'number') return v;
+    return parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0;
+  }
 
   useEffect(() => {
     async function fetchFrete() {
@@ -88,41 +100,22 @@ export default function EditFretePage() {
       const odo = Number(abs.odometro) || 0;
       const comp = abs.completou;
 
-      // 1. VALIDAÇÃO DE ESTADO DE EDIÇÃO: 
-      // Se o usuário apagar um dígito, o odômetro fica menor que o anterior.
-      // Nesse caso, tratamos a diferença como 0 para não quebrar a tela.
       const isOdoValido = odo > lastOdo;
       const difKm = isOdoValido ? (odo - lastOdo) : 0;
-
-      // 2. ACÚMULO CORRETO:
-      // Soma o trecho atual com o que já estava pendente de abastecimentos parciais
       const kmTrecho = kmAcum + difKm;
       const litrosTrecho = litrosAcum + vol;
 
       let media = 0;
-
       if (comp && litrosTrecho > 0 && isOdoValido) {
-        // Se ENCHEU O TANQUE: A média é o TOTAL rodado / TOTAL abastecido desde a última vez
         media = kmTrecho / litrosTrecho;
-        
-        // Zera os acumuladores porque o tanque está cheio, iniciando um novo ciclo
         kmAcum = 0;
         litrosAcum = 0;
       } else {
-        // Se NÃO ENCHEU O TANQUE: Guarda os valores para somar no próximo abastecimento
-        if (isOdoValido) {
-          kmAcum = kmTrecho;
-        }
+        if (isOdoValido) kmAcum = kmTrecho;
         litrosAcum = litrosTrecho;
       }
 
-      // 3. PROTEÇÃO DO LAST ODO:
-      // Só atualiza o odômetro anterior se o atual for válido.
-      // Isso impede que um erro temporário de digitação "contamine" os próximos cálculos.
-      if (isOdoValido) {
-        lastOdo = odo;
-      }
-
+      if (isOdoValido) lastOdo = odo;
       return { ...abs, media_kml: media };
     });
   }, [abastecimentos, odometroAnterior]);
@@ -141,23 +134,22 @@ export default function EditFretePage() {
     setSaving(true)
     
     const paradasProntas = abastecimentosComMedia.map(abs => ({
-      volume: parseNumero(abs.volume),
+      volume: round2(parseNumero(abs.volume)),
       odometro: Number(abs.odometro) || 0,
       valor: parseCurrency(abs.valor),
       completou: !!abs.completou,
-      media_kml: abs.media_kml || 0
+      media_kml: round2(abs.media_kml || 0)
     }))
 
     const ultimo = paradasProntas[paradasProntas.length - 1] || {}
     const dataToSave: any = {
       ...formValues,
-      // O parseNumero já lida com a string formatada independente das casas
       peso_ton: parseNumero(formValues.peso_ton),
       preco_ton: parseCurrency(formValues.preco_ton),
       abastecimentos_json: paradasProntas,
       valor: stats.despesas,
       odometro_atual: ultimo.odometro || formValues.odometro_atual,
-      media_kml: ultimo.media_kml || 0,
+      media_kml: round2(ultimo.media_kml || 0),
     }
 
     camposOperacionais.forEach(campo => { dataToSave[campo] = parseCurrency(formValues[campo]) })
@@ -198,7 +190,6 @@ export default function EditFretePage() {
               <BigInput label="Data" type="date" value={formValues.data_frete} onChange={(e: any) => setFormValues({...formValues, data_frete: e.target.value})} required />
               
               <div className="grid grid-cols-2 gap-4">
-                {/* Aqui passamos explicitamente name="peso_ton" para o componente saber formatar 3 casas */}
                 <BigInput label="Peso (Ton)" name="peso_ton" value={formatDecimal(formValues.peso_ton, true)} onChange={(e: any) => setFormValues({...formValues, peso_ton: e.target.value})} isDecimal />
                 <BigInput label="Valor/Ton" value={formatCurrency(formValues.preco_ton)} onChange={(e: any) => setFormValues({...formValues, preco_ton: e.target.value})} isCurrency />
               </div>
@@ -208,7 +199,7 @@ export default function EditFretePage() {
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl">
             <div className="bg-emerald-700 px-6 py-3 flex justify-between items-center">
               <h2 className="text-sm font-black uppercase flex items-center gap-2"><Fuel size={18} /> Abastecimento</h2>
-              <button type="button" onClick={() => setAbastecimentos([...abastecimentos, { volume: '', odometro: '', valor: 0, completou: false }])} className="bg-white text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black flex items-center gap-1"><Plus size={14} /> ADICIONAR</button>
+              <button type="button" onClick={() => setAbastecimentos([...abastecimentos, { volume: 0, odometro: '', valor: 0, completou: false }])} className="bg-white text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black flex items-center gap-1"><Plus size={14} /> ADICIONAR</button>
             </div>
             <div className="p-4 space-y-4">
               {abastecimentosComMedia.map((abs, index) => (
@@ -289,8 +280,6 @@ function BigInput({ label, badge, isCurrency, isDecimal, onChange, name, ...prop
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (isCurrency || isDecimal) {
       const val = e.target.value.replace(/\D/g, '');
-      
-      // Lógica de 3 casas para o campo peso_ton
       const isWeight = name === 'peso_ton';
       const divisor = isWeight ? 1000 : 100;
       const num = Number(val) / divisor;
