@@ -12,7 +12,6 @@ import {
 } from 'lucide-react'
 
 const STORAGE_KEY = 'rascunho_frete_pwa'
-// ALTERE ESTA VERSÃO SEMPRE QUE FIZER UM DEPLOY QUE MUDE NOMES DE CAMPOS
 const APP_VERSION = '1.0.1' 
 
 const LABELS_CAMPOS: Record<string, string> = {
@@ -126,7 +125,7 @@ export default function Home() {
     limpeza: '',
     lavagem: '',
     peca: '',
-    caixinha: '',
+    caixinha: 'R$ 20,00',
     cartao: '',
     diversos_operacional: '',
   })
@@ -138,11 +137,8 @@ export default function Home() {
   const parseCurrency = (v: any) => Number(String(v || '0').replace(/\D/g, '')) / 100
   const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
 
-  // LÓGICA DE LIMPEZA POR VERSÃO
   useEffect(() => {
     const lastVersion = localStorage.getItem('app_version')
-    
-    // Se a versão mudou ou não existe, limpa o rascunho
     if (lastVersion !== APP_VERSION) {
       localStorage.removeItem(STORAGE_KEY)
       localStorage.setItem('app_version', APP_VERSION)
@@ -216,14 +212,19 @@ export default function Home() {
   const abastecimentosComMedia = useMemo(() => {
     let ultimoOdoCheio = odometroAnteriorBanco ?? 0;
     let volumeAcumulado = 0;
+    
     return abastecimentos.map((abs) => {
       const odoAtual = parseNumero(abs.odometro);
       const volumeAtual = parseNumero(abs.volume);
+      
       volumeAcumulado = round2(volumeAcumulado + volumeAtual);
       let media = 0;
+      
       if (abs.completou && odoAtual > 0 && volumeAcumulado > 0) {
-        const kmPercorrida = odoAtual - ultimoOdoCheio;
-        if (kmPercorrida > 0) media = round2(kmPercorrida / volumeAcumulado);
+        if (ultimoOdoCheio > 0) {
+          const kmPercorrida = odoAtual - ultimoOdoCheio;
+          if (kmPercorrida > 0) media = round2(kmPercorrida / volumeAcumulado);
+        }
         ultimoOdoCheio = odoAtual; 
         volumeAcumulado = 0;
       }
@@ -234,7 +235,14 @@ export default function Home() {
   const stats = useMemo(() => {
     const receita = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
     const diesel = round2(abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0))
-    const despesasOp = round2(CAMPOS_OPERACIONAIS.reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0))
+    
+    // CORREÇÃO AQUI: Garante que o cálculo na tela use 20 se caixinha estiver vazia
+    const despesasOp = round2(CAMPOS_OPERACIONAIS.reduce((acc, campo) => {
+        let v = parseCurrency(formValues[campo]);
+        if (campo === 'caixinha' && v === 0) v = 20;
+        return acc + v;
+    }, 0))
+    
     const despesasTotais = round2(diesel + despesasOp)
     const lucro = round2(receita - despesasTotais)
     return { receita, despesas: despesasTotais, lucro }
@@ -255,7 +263,10 @@ export default function Home() {
       
       const operacionaisTratados: any = {}
       CAMPOS_OPERACIONAIS.forEach(c => { 
-        operacionaisTratados[c] = round2(parseCurrency(formValues[c])) 
+        let valorNumerico = round2(parseCurrency(formValues[c]));
+        // CORREÇÃO AQUI: Força 20 no banco se o campo estiver vazio/zero
+        if (c === 'caixinha' && valorNumerico === 0) valorNumerico = 20;
+        operacionaisTratados[c] = valorNumerico;
       })
       
       const processados = abastecimentosComMedia.map(a => ({

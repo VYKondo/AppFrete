@@ -79,22 +79,53 @@ export default function EditFretePage() {
   }, [id, router])
 
   const abastecimentosComMedia = useMemo(() => {
-    let lastOdo = odometroAnterior
-    let kmAcum = 0
-    let litrosAcum = 0
+    let lastOdo = odometroAnterior;
+    let kmAcum = 0;
+    let litrosAcum = 0;
 
     return abastecimentos.map((abs) => {
-      const vol = parseNumero(abs.volume)
-      const odo = Number(abs.odometro) || 0
-      const comp = abs.completou
-      const difKm = odo - lastOdo
-      const kmAcumAtual = comp ? difKm : (kmAcum + difKm)
-      const litrosAcumAtual = comp ? vol : (litrosAcum + vol)
-      const media = (comp && litrosAcumAtual > 0) ? (kmAcumAtual / litrosAcumAtual) : 0
-      lastOdo = odo; kmAcum = kmAcumAtual; litrosAcum = litrosAcumAtual
-      return { ...abs, media_kml: media }
-    })
-  }, [abastecimentos, odometroAnterior])
+      const vol = parseNumero(abs.volume);
+      const odo = Number(abs.odometro) || 0;
+      const comp = abs.completou;
+
+      // 1. VALIDAÇÃO DE ESTADO DE EDIÇÃO: 
+      // Se o usuário apagar um dígito, o odômetro fica menor que o anterior.
+      // Nesse caso, tratamos a diferença como 0 para não quebrar a tela.
+      const isOdoValido = odo > lastOdo;
+      const difKm = isOdoValido ? (odo - lastOdo) : 0;
+
+      // 2. ACÚMULO CORRETO:
+      // Soma o trecho atual com o que já estava pendente de abastecimentos parciais
+      const kmTrecho = kmAcum + difKm;
+      const litrosTrecho = litrosAcum + vol;
+
+      let media = 0;
+
+      if (comp && litrosTrecho > 0 && isOdoValido) {
+        // Se ENCHEU O TANQUE: A média é o TOTAL rodado / TOTAL abastecido desde a última vez
+        media = kmTrecho / litrosTrecho;
+        
+        // Zera os acumuladores porque o tanque está cheio, iniciando um novo ciclo
+        kmAcum = 0;
+        litrosAcum = 0;
+      } else {
+        // Se NÃO ENCHEU O TANQUE: Guarda os valores para somar no próximo abastecimento
+        if (isOdoValido) {
+          kmAcum = kmTrecho;
+        }
+        litrosAcum = litrosTrecho;
+      }
+
+      // 3. PROTEÇÃO DO LAST ODO:
+      // Só atualiza o odômetro anterior se o atual for válido.
+      // Isso impede que um erro temporário de digitação "contamine" os próximos cálculos.
+      if (isOdoValido) {
+        lastOdo = odo;
+      }
+
+      return { ...abs, media_kml: media };
+    });
+  }, [abastecimentos, odometroAnterior]);
 
   const stats = useMemo(() => {
     if (!formValues) return { despesas: 0, lucro: 0 }
