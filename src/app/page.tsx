@@ -8,12 +8,13 @@ import { supabase } from '@/lib/supabase'
 import Swal from 'sweetalert2'
 import {
   Truck, Fuel, Package,
-  CheckCircle2, Trash2, Plus, Save, History, Fuel as FuelIcon,
+  CheckCircle2, Trash2, Plus, Save, History, Fuel as FuelIcon, Lock,
 } from 'lucide-react'
 
 const STORAGE_KEY = 'rascunho_frete_pwa'
-const APP_VERSION = '1.0.1' 
+const APP_VERSION = '1.0.2' 
 
+// Movi 'caixinha' para o final da lista para refletir no layout
 const LABELS_CAMPOS: Record<string, string> = {
   pedagio: 'Pedágio',
   mecanica: 'Mecânica',
@@ -25,9 +26,9 @@ const LABELS_CAMPOS: Record<string, string> = {
   limpeza: 'Limpeza',
   lavagem: 'Lavagem',
   peca: 'Peça',
-  caixinha: 'Caixinha',
   cartao: 'Cartão',
-  diversos_operacional: 'Diversos Operacional'
+  diversos_operacional: 'Diversos Operacional',
+  caixinha: 'Caixinha', // Agora no final
 };
 
 const CAMPOS_OPERACIONAIS = Object.keys(LABELS_CAMPOS);
@@ -149,7 +150,7 @@ export default function Home() {
     if (rascunhoSalvo) {
       try {
         const { formValues: f, abastecimentos: a } = JSON.parse(rascunhoSalvo)
-        if (f) setFormValues(f)
+        if (f) setFormValues({ ...f, caixinha: 'R$ 20,00' })
         if (a) setAbastecimentos(a)
       } catch (e) {
         console.error("Erro ao recuperar rascunho", e)
@@ -166,6 +167,8 @@ export default function Home() {
 
   const handleInputChange = useCallback((e: any) => {
     const { name, value } = e.target
+    if (name === 'caixinha') return
+
     setFormValues((prev: any) => ({
       ...prev,
       [name]: name === 'placa' ? value.replace(/[^A-Z0-9]/gi, '').toUpperCase() : value
@@ -236,7 +239,6 @@ export default function Home() {
     const receita = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
     const diesel = round2(abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0))
     
-    // CORREÇÃO AQUI: Garante que o cálculo na tela use 20 se caixinha estiver vazia
     const despesasOp = round2(CAMPOS_OPERACIONAIS.reduce((acc, campo) => {
         let v = parseCurrency(formValues[campo]);
         if (campo === 'caixinha' && v === 0) v = 20;
@@ -264,8 +266,7 @@ export default function Home() {
       const operacionaisTratados: any = {}
       CAMPOS_OPERACIONAIS.forEach(c => { 
         let valorNumerico = round2(parseCurrency(formValues[c]));
-        // CORREÇÃO AQUI: Força 20 no banco se o campo estiver vazio/zero
-        if (c === 'caixinha' && valorNumerico === 0) valorNumerico = 20;
+        if (c === 'caixinha') valorNumerico = 20;
         operacionaisTratados[c] = valorNumerico;
       })
       
@@ -340,6 +341,7 @@ export default function Home() {
             </div>
           </section>
 
+          {/* ABASTECIMENTO */}
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl">
             <div className="bg-emerald-700 px-6 py-3 flex justify-between items-center">
               <h2 className="text-sm font-black uppercase flex items-center gap-2"><FuelIcon size={18} /> Abastecimento</h2>
@@ -371,27 +373,38 @@ export default function Home() {
             </div>
           </section>
 
+          {/* CAMPOS OPERACIONAIS */}
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl p-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-               {CAMPOS_OPERACIONAIS.map(campo => (
-                <div key={campo}>
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">
-                      {LABELS_CAMPOS[campo]}
-                    </label>
-                    <input
-                     type="text"
-                     name={campo}
-                     value={formValues[campo] || ''}
-                     onChange={(e) => {
-                       const val = e.target.value.replace(/\D/g, '');
-                       const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val) / 100);
-                       handleInputChange({ target: { name: campo, value: formatted } });
-                     }}
-                     placeholder="R$ 0,00"
-                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-sm font-bold text-white outline-none focus:ring-2 ring-emerald-500/20"
-                   />
-                </div>
-               ))}
+               {CAMPOS_OPERACIONAIS.map(campo => {
+                 const isLocked = campo === 'caixinha';
+                 return (
+                  <div key={campo} className="relative">
+                      <label className="text-[10px] font-black text-slate-500 uppercase ml-1 flex items-center gap-1">
+                        {LABELS_CAMPOS[campo]}
+                        {isLocked && <Lock size={10} />}
+                      </label>
+                      <input
+                       type="text"
+                       name={campo}
+                       value={formValues[campo] || ''}
+                       readOnly={isLocked}
+                       onChange={(e) => {
+                         if (isLocked) return;
+                         const val = e.target.value.replace(/\D/g, '');
+                         const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val) / 100);
+                         handleInputChange({ target: { name: campo, value: formatted } });
+                       }}
+                       placeholder="R$ 0,00"
+                       className={`w-full border rounded-xl px-3 py-3 text-sm font-bold outline-none transition-all ${
+                         isLocked 
+                         ? 'bg-slate-950 border-slate-800 text-slate-500 cursor-not-allowed opacity-60' 
+                         : 'bg-slate-800 border-slate-700 text-white focus:ring-2 ring-emerald-500/20'
+                       }`}
+                     />
+                  </div>
+                 )
+               })}
               </div>
           </section>
 
