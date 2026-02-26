@@ -24,7 +24,7 @@ export default function FretesPage() {
     patio: "Pátio",
     limpeza: "Limpeza",
     lavagem: "Lavagem",
-    peca: "Peça",
+    arla: "ARLA",
     caixinha: "Caixinha",
     cartao: "Cartão",
     diversos_operacional: "Diversos Operacional"

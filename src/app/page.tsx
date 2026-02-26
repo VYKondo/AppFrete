@@ -12,9 +12,8 @@ import {
 } from 'lucide-react'
 
 const STORAGE_KEY = 'rascunho_frete_pwa'
-const APP_VERSION = '1.0.2' 
+const APP_VERSION = '1.0.3' 
 
-// Movi 'caixinha' para o final da lista para refletir no layout
 const LABELS_CAMPOS: Record<string, string> = {
   pedagio: 'Pedágio',
   mecanica: 'Mecânica',
@@ -25,10 +24,10 @@ const LABELS_CAMPOS: Record<string, string> = {
   patio: 'Pátio',
   limpeza: 'Limpeza',
   lavagem: 'Lavagem',
-  peca: 'Peça',
+  arla: 'ARLA',
   cartao: 'Cartão',
   diversos_operacional: 'Diversos Operacional',
-  caixinha: 'Caixinha', // Agora no final
+  caixinha: 'Caixinha',
 };
 
 const CAMPOS_OPERACIONAIS = Object.keys(LABELS_CAMPOS);
@@ -36,11 +35,13 @@ const CAMPOS_OPERACIONAIS = Object.keys(LABELS_CAMPOS);
 const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100
 const round3 = (num: number) => Math.round((num + Number.EPSILON) * 1000) / 1000
 
+// Componente de Input com suporte a máscara de Milhar (Odômetro)
 function BigInput({
   label, value, onChange, name,
   type = "text",
   isCurrency = false,
   isDecimal = false,
+  isOdometer = false, // Nova flag para Odômetro
   placeholder = "",
   required = false,
   badge = null,
@@ -48,23 +49,29 @@ function BigInput({
 }: any) {
   
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isCurrency || isDecimal) {
+    // Se for Odômetro, Moeda ou Decimal, limpamos caracteres não numéricos
+    if (isCurrency || isDecimal || isOdometer) {
       const val = e.target.value.replace(/\D/g, '')
-      const isWeight = name === 'peso_ton'
-      const divisor = isWeight ? 1000 : 100
-      const numberValue = Number(val) / divisor
-      
+      if (!val) return onChange({ target: { name, value: '' } })
+
       let formatted;
-      if (isCurrency) {
+
+      if (isOdometer) {
+        // Formatação 1.000.000 (Sem decimais)
+        formatted = new Intl.NumberFormat('pt-BR').format(Number(val))
+      } else if (isCurrency) {
+        // Formatação R$ 1.000,00
         formatted = new Intl.NumberFormat('pt-BR', {
           style: 'currency',
           currency: 'BRL'
-        }).format(numberValue)
+        }).format(Number(val) / 100)
       } else {
+        // Formatação Peso (0,000) ou Volume (0,00)
+        const isWeight = name === 'peso_ton'
         formatted = new Intl.NumberFormat('pt-BR', {
           minimumFractionDigits: isWeight ? 3 : 2,
           maximumFractionDigits: isWeight ? 3 : 2
-        }).format(numberValue)
+        }).format(Number(val) / (isWeight ? 1000 : 100))
       }
 
       onChange({ target: { name, value: formatted } })
@@ -125,7 +132,7 @@ export default function Home() {
     patio: '',
     limpeza: '',
     lavagem: '',
-    peca: '',
+    arla: '',
     caixinha: 'R$ 20,00',
     cartao: '',
     diversos_operacional: '',
@@ -143,7 +150,6 @@ export default function Home() {
     if (lastVersion !== APP_VERSION) {
       localStorage.removeItem(STORAGE_KEY)
       localStorage.setItem('app_version', APP_VERSION)
-      console.log(`Versão atualizada para ${APP_VERSION}. Cache de rascunho limpo.`)
     }
 
     const rascunhoSalvo = localStorage.getItem(STORAGE_KEY)
@@ -177,16 +183,7 @@ export default function Home() {
 
   const handleAbastecimentoChange = (index: number, field: string, value: any) => {
     const novos = [...abastecimentos]
-    if (field === 'volume' || field === 'valor') {
-        const val = value.replace(/\D/g, '')
-        const num = Number(val) / 100
-        const formatted = field === 'valor' 
-            ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num)
-            : new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num)
-        novos[index] = { ...novos[index], [field]: formatted }
-    } else {
-        novos[index] = { ...novos[index], [field]: value }
-    }
+    novos[index] = { ...novos[index], [field]: value }
     setAbastecimentos(novos)
   }
 
@@ -238,13 +235,11 @@ export default function Home() {
   const stats = useMemo(() => {
     const receita = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
     const diesel = round2(abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0))
-    
     const despesasOp = round2(CAMPOS_OPERACIONAIS.reduce((acc, campo) => {
         let v = parseCurrency(formValues[campo]);
         if (campo === 'caixinha' && v === 0) v = 20;
         return acc + v;
     }, 0))
-    
     const despesasTotais = round2(diesel + despesasOp)
     const lucro = round2(receita - despesasTotais)
     return { receita, despesas: despesasTotais, lucro }
@@ -252,7 +247,13 @@ export default function Home() {
 
   function handleTrySubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!formValues.placa || !formValues.motorista) return Swal.fire('Atenção', 'Preencha placa e motorista', 'warning')
+    const placaLimpa = formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+    if (placaLimpa.length >= 7 && odometroAnteriorBanco === null) {
+      return Swal.fire('Aguarde', 'Buscando KM anterior no banco...', 'info')
+    }
+    if (!formValues.placa || !formValues.motorista) {
+      return Swal.fire('Atenção', 'Preencha placa e motorista', 'warning')
+    }
     setIsModalOpen(true)
   }
 
@@ -277,6 +278,8 @@ export default function Home() {
         media_kml: round2(a.media_kml)
       }))
 
+      const mediaFinal = [...processados].reverse().find(a => a.media_kml > 0)?.media_kml || 0
+
       const payload = {
         ...formValues,
         ...operacionaisTratados,
@@ -287,14 +290,14 @@ export default function Home() {
         abastecimentos_json: processados,
         valor: stats.despesas,
         odometro_atual: parseNumero(processados[processados.length - 1]?.odometro),
-        media_kml: round2([...processados].reverse().find(a => a.media_kml > 0)?.media_kml || 0)
+        media_kml: round2(mediaFinal)
       }
       
       const { error } = await supabase.from('fretes').insert([payload])
       if (error) throw error
 
       localStorage.removeItem(STORAGE_KEY)
-      await Swal.fire({ title: 'Sucesso!', text: 'Operação salva.', icon: 'success', background: '#0f172a', color: '#fff' })
+      await Swal.fire({ title: 'Sucesso!', text: `Frete salvo!`, icon: 'success', background: '#0f172a', color: '#fff' })
       window.location.reload()
     } catch (err: any) { 
       Swal.fire('Erro', err.message, 'error') 
@@ -328,7 +331,7 @@ export default function Home() {
             <div className="bg-blue-700 px-6 py-3"><h2 className="text-sm font-black uppercase flex items-center gap-2"><Package size={18} /> Dados da Viagem</h2></div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
               <BigInput label="Motorista" name="motorista" value={formValues.motorista} onChange={handleInputChange} placeholder="NOME DO MOTORISTA" required />
-              <BigInput label="Placa" name="placa" value={formValues.placa} onChange={handleInputChange} placeholder="AAA-0000" required badge={odometroAnteriorBanco !== null && <span className="text-[9px] font-black text-emerald-400 uppercase">KM: {odometroAnteriorBanco}</span>} icon={odometroAnteriorBanco !== null && <CheckCircle2 className="text-emerald-500" size={20} />} />
+              <BigInput label="Placa" name="placa" value={formValues.placa} onChange={handleInputChange} placeholder="AAA-0000" required badge={odometroAnteriorBanco !== null && <span className="text-[9px] font-black text-emerald-400 uppercase">KM ANTERIOR: {odometroAnteriorBanco.toLocaleString('pt-BR')}</span>} icon={odometroAnteriorBanco !== null && <CheckCircle2 className="text-emerald-500" size={20} />} />
               <BigInput label="Data" name="data_frete" value={formValues.data_frete} onChange={handleInputChange} type="date" required />
               <div className="grid grid-cols-2 gap-4">
                 <BigInput label="Frete de" name="frete_de" value={formValues.frete_de} onChange={handleInputChange} />
@@ -341,7 +344,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* ABASTECIMENTO */}
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl">
             <div className="bg-emerald-700 px-6 py-3 flex justify-between items-center">
               <h2 className="text-sm font-black uppercase flex items-center gap-2"><FuelIcon size={18} /> Abastecimento</h2>
@@ -352,7 +354,7 @@ export default function Home() {
                 <div key={index} className="bg-slate-800/50 p-5 rounded-2xl border border-slate-700 relative space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <BigInput label="Valor Pago" value={abs.valor} onChange={(e: any) => handleAbastecimentoChange(index, 'valor', e.target.value)} isCurrency />
-                    <BigInput label="Odômetro" value={abs.odometro} onChange={(e: any) => handleAbastecimentoChange(index, 'odometro', e.target.value)} placeholder="0" />
+                    <BigInput label="Odômetro" value={abs.odometro} onChange={(e: any) => handleAbastecimentoChange(index, 'odometro', e.target.value)} placeholder="0" isOdometer />
                     <BigInput label="Volume (Litros)" value={abs.volume} onChange={(e: any) => handleAbastecimentoChange(index, 'volume', e.target.value)} placeholder="0,00" isDecimal />
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
@@ -373,7 +375,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* CAMPOS OPERACIONAIS */}
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl p-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                {CAMPOS_OPERACIONAIS.map(campo => {
@@ -401,7 +402,7 @@ export default function Home() {
                          ? 'bg-slate-950 border-slate-800 text-slate-500 cursor-not-allowed opacity-60' 
                          : 'bg-slate-800 border-slate-700 text-white focus:ring-2 ring-emerald-500/20'
                        }`}
-                     />
+                      />
                   </div>
                  )
                })}
