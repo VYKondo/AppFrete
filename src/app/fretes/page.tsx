@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Edit3, Trash2, ChevronDown, Truck, ArrowLeft, Calendar, Gauge, MapPin, Wallet, ReceiptText, Banknote } from 'lucide-react'
+import { Edit3, Trash2, ChevronDown, Truck, ArrowLeft, Calendar, Gauge, MapPin, Wallet, ReceiptText, Banknote, User } from 'lucide-react'
 import Swal from 'sweetalert2'
 
 export default function FretesPage() {
@@ -13,13 +13,12 @@ export default function FretesPage() {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  // Mapeamento: Chave do Banco (sem acento) -> Texto na Tela (com acento)
   const labelMap: { [key: string]: string } = {
     pedagio: "Pedágio",
     mecanica: "Mecânica",
     eletrica: "Elétrica",
     borracharia: "Borracharia",
-    diferenca_frete: "Diferença Frete", // Corrigido para bater com o Supabase
+    diferenca_frete: "Diferença Frete",
     quebra: "Quebra",
     patio: "Pátio",
     limpeza: "Limpeza",
@@ -107,7 +106,6 @@ export default function FretesPage() {
             const paradas = frete.abastecimentos_json || [];
             const gastoDiesel = paradas.reduce((acc: number, curr: any) => acc + parseCurrency(curr.valor), 0);
             
-            // Aqui filtramos as despesas operacionais usando as chaves sem acento
             const despesasOperacionaisAtivas = Object.keys(labelMap).filter(key => (Number(frete[key]) || 0) > 0);
             const totalOutrosGastos = despesasOperacionaisAtivas.reduce((acc, key) => acc + (Number(frete[key]) || 0), 0);
             
@@ -149,11 +147,19 @@ export default function FretesPage() {
                       </div>
                     </div>
 
-                    <div className="text-right min-w-[120px] w-full md:w-auto pt-4 md:pt-0 border-t border-slate-800/30 md:border-none">
+                    <div className="text-right min-w-[140px] w-full md:w-auto pt-4 md:pt-0 border-t border-slate-800/30 md:border-none flex flex-col items-end justify-center">
                       <span className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-black block mb-1">Lucro Líquido</span>
-                      <span className={`text-xl md:text-2xl font-black ${lucro >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <span className={`text-xl md:text-2xl font-black mb-1 ${lucro >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {formatCurrency(lucro)}
                       </span>
+                      
+                      {/* TAG QUE MOSTRA O USUÁRIO PELO CAMPO USER_EMAIL EXISTENTE */}
+                      <div className="flex items-center gap-1.5 bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-700/50">
+                        <User size={10} className="text-blue-400" />
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">
+                          {frete.user_email ? frete.user_email.split('@')[0] : '---'}
+                        </span>
+                      </div>
                     </div>
 
                     <div className={`hidden md:block p-2 bg-slate-800 rounded-xl transition-transform ${expanded === frete.id ? 'rotate-180' : ''}`}>
@@ -164,7 +170,6 @@ export default function FretesPage() {
 
                 {expanded === frete.id && (
                   <div className="px-6 pb-8 animate-in fade-in slide-in-from-top-4 duration-300">
-                    
                     <div className="bg-blue-500/5 rounded-3xl border border-blue-500/20 overflow-hidden mb-6">
                         <div className="px-6 py-3 bg-blue-500/10 border-b border-blue-500/20 flex items-center">
                             <Banknote size={14} className="text-blue-400 mr-2" />
@@ -233,7 +238,6 @@ export default function FretesPage() {
                         <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
                           {despesasOperacionaisAtivas.map(key => (
                             <div key={key} className="flex flex-col">
-                              {/* Aqui usamos o labelMap para mostrar o nome com acento */}
                               <span className="text-[9px] text-slate-500 uppercase font-black">
                                 {labelMap[key] || key}
                               </span>
