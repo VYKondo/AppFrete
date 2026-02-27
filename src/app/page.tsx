@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 
 const STORAGE_KEY = 'rascunho_frete_pwa'
-const APP_VERSION = '1.0.3' 
+const APP_VERSION = '1.0.4' 
 
 const LABELS_CAMPOS: Record<string, string> = {
   pedagio: 'Pedágio',
@@ -233,7 +233,9 @@ export default function Home() {
   }, [abastecimentos, odometroAnteriorBanco]);
 
   const stats = useMemo(() => {
-    const receita = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
+    const bruto = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
+    const receita = round2(bruto * 0.88) // NOVO: 12% de desconto calculados para a coluna 'receita'
+    
     const diesel = round2(abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0))
     const despesasOp = round2(CAMPOS_OPERACIONAIS.reduce((acc, campo) => {
         let v = parseCurrency(formValues[campo]);
@@ -241,8 +243,10 @@ export default function Home() {
         return acc + v;
     }, 0))
     const despesasTotais = round2(diesel + despesasOp)
-    const lucro = round2(receita - despesasTotais)
-    return { receita, despesas: despesasTotais, lucro }
+    
+    const lucro = round2(receita - despesasTotais) // NOVO: Lucro agora subtrai as despesas da 'receita' (que já tem o desconto)
+    
+    return { bruto, receita, despesas: despesasTotais, lucro }
   }, [formValues, abastecimentos])
 
   function handleTrySubmit(e: React.FormEvent) {
@@ -267,7 +271,8 @@ export default function Home() {
       const operacionaisTratados: any = {}
       CAMPOS_OPERACIONAIS.forEach(c => { 
         let valorNumerico = round2(parseCurrency(formValues[c]));
-        if (c === 'caixinha') valorNumerico = 20;
+        // Garante que a caixinha sempre seja 20 se vier zerada/vazia
+        if (c === 'caixinha' && (valorNumerico === 0 || !valorNumerico)) valorNumerico = 20;
         operacionaisTratados[c] = valorNumerico;
       })
       
@@ -286,7 +291,8 @@ export default function Home() {
         placa: formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase(),
         user_email: user.email,
         peso_ton: round3(parseNumero(formValues.peso_ton)),
-        preco_ton: round2(parseCurrency(formValues.preco_ton)),
+        preco_ton: parseCurrency(formValues.preco_ton), // <--- VALOR ORIGINAL (SEM DESCONTO)
+        receita: stats.receita, // <--- NOVO CAMPO NO BANCO COM DESCONTO DE 12%
         abastecimentos_json: processados,
         valor: stats.despesas,
         odometro_atual: parseNumero(processados[processados.length - 1]?.odometro),
@@ -297,7 +303,13 @@ export default function Home() {
       if (error) throw error
 
       localStorage.removeItem(STORAGE_KEY)
-      await Swal.fire({ title: 'Sucesso!', text: `Frete salvo!`, icon: 'success', background: '#0f172a', color: '#fff' })
+      await Swal.fire({ 
+        title: 'Sucesso!', 
+        text: `Frete salvo com sucesso!`, 
+        icon: 'success', 
+        background: '#0f172a', 
+        color: '#fff' 
+      })
       window.location.reload()
     } catch (err: any) { 
       Swal.fire('Erro', err.message, 'error') 

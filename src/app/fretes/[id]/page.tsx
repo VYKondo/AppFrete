@@ -128,12 +128,24 @@ export default function EditFretePage() {
     });
   }, [abastecimentos, odometroAnterior]);
 
+  // CÁLCULOS PARA EXIBIÇÃO E SALVAMENTO
   const stats = useMemo(() => {
-    if (!formValues) return { despesas: 0, lucro: 0 }
-    const receita = (parseNumero(formValues.peso_ton)) * parseCurrency(formValues.preco_ton)
+    if (!formValues) return { despesas: 0, lucro: 0, receitaFinal: 0 }
+    
+    // 1. Receita Bruta -> Aplica-se o desconto de 12% (x 0.88)
+    const receitaBruta = (parseNumero(formValues.peso_ton)) * parseCurrency(formValues.preco_ton)
+    const receitaComDesconto = receitaBruta * 0.88
+    
+    // 2. Despesas
     const custoDiesel = abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0)
     const outrosCustos = camposOperacionais.reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0)
-    return { despesas: custoDiesel + outrosCustos, lucro: receita - (custoDiesel + outrosCustos) }
+    const totalDespesas = custoDiesel + outrosCustos
+    
+    return { 
+      despesas: totalDespesas, 
+      receitaFinal: receitaComDesconto,
+      lucro: receitaComDesconto - totalDespesas 
+    }
   }, [formValues, abastecimentos])
 
   async function handleSubmit(e: FormEvent) {
@@ -150,17 +162,24 @@ export default function EditFretePage() {
     }))
 
     const ultimo = paradasProntas[paradasProntas.length - 1] || {}
+    
     const dataToSave: any = {
       ...formValues,
       peso_ton: parseNumero(formValues.peso_ton),
       preco_ton: parseCurrency(formValues.preco_ton),
       abastecimentos_json: paradasProntas,
-      valor: stats.despesas,
+      // SALVANDO A RECEITA COM DESCONTO NO BANCO
+      receita: round2(stats.receitaFinal),
+      // SALVANDO O TOTAL DE DESPESAS NO CAMPO VALOR
+      valor: round2(stats.despesas),
       odometro_atual: ultimo.odometro || formValues.odometro_atual,
       media_kml: round2(ultimo.media_kml || 0),
     }
 
     camposOperacionais.forEach(campo => { dataToSave[campo] = parseCurrency(formValues[campo]) })
+    
+    delete dataToSave.id
+    delete dataToSave.created_at
     
     const { error } = await supabase.from('fretes').update(dataToSave).eq('id', id)
     if (!error) router.push('/fretes')
@@ -261,12 +280,12 @@ export default function EditFretePage() {
             <div className="bg-slate-900 p-4 rounded-3xl border-2 border-emerald-500 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-6 w-full md:w-auto justify-around md:justify-start text-white">
                 <div>
-                  <p className="text-[9px] font-black text-slate-500 uppercase">Gasto Total</p>
+                  <p className="text-[9px] font-black text-slate-500 uppercase">Gasto Total (Banco)</p>
                   <p className="text-lg font-black text-red-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.despesas)}</p>
                 </div>
                 <div className="h-10 w-[1px] bg-slate-800 hidden md:block" />
                 <div>
-                  <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Saldo Atual</p>
+                  <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Saldo c/ Desconto 12%</p>
                   <p className="text-3xl font-black">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.lucro)}</p>
                 </div>
               </div>
