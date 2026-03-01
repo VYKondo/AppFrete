@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 import Swal from 'sweetalert2'
 import {
   Truck, Fuel, Package,
-  CheckCircle2, Trash2, Plus, Save, History, Fuel as FuelIcon, Lock,
+  CheckCircle2, Trash2, Plus, Save, History, Fuel as FuelIcon, Lock, AlertTriangle
 } from 'lucide-react'
 
 const STORAGE_KEY = 'rascunho_frete_pwa'
@@ -35,45 +35,40 @@ const CAMPOS_OPERACIONAIS = Object.keys(LABELS_CAMPOS);
 const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100
 const round3 = (num: number) => Math.round((num + Number.EPSILON) * 1000) / 1000
 
-// Componente de Input com suporte a máscara de Milhar (Odômetro)
 function BigInput({
   label, value, onChange, name,
   type = "text",
   isCurrency = false,
   isDecimal = false,
-  isOdometer = false, // Nova flag para Odômetro
+  isOdometer = false,
   placeholder = "",
   required = false,
   badge = null,
-  icon = null
+  icon = null,
+  disabled = false 
 }: any) {
   
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Se for Odômetro, Moeda ou Decimal, limpamos caracteres não numéricos
+    if (disabled) return;
     if (isCurrency || isDecimal || isOdometer) {
       const val = e.target.value.replace(/\D/g, '')
       if (!val) return onChange({ target: { name, value: '' } })
 
       let formatted;
-
       if (isOdometer) {
-        // Formatação 1.000.000 (Sem decimais)
         formatted = new Intl.NumberFormat('pt-BR').format(Number(val))
       } else if (isCurrency) {
-        // Formatação R$ 1.000,00
         formatted = new Intl.NumberFormat('pt-BR', {
           style: 'currency',
           currency: 'BRL'
         }).format(Number(val) / 100)
       } else {
-        // Formatação Peso (0,000) ou Volume (0,00)
         const isWeight = name === 'peso_ton'
         formatted = new Intl.NumberFormat('pt-BR', {
           minimumFractionDigits: isWeight ? 3 : 2,
           maximumFractionDigits: isWeight ? 3 : 2
         }).format(Number(val) / (isWeight ? 1000 : 100))
       }
-
       onChange({ target: { name, value: formatted } })
     } else {
       onChange(e)
@@ -81,7 +76,7 @@ function BigInput({
   }
 
   return (
-    <div className="flex flex-col gap-1.5 w-full relative">
+    <div className={`flex flex-col gap-1.5 w-full relative transition-all duration-500 ${disabled ? 'opacity-20 grayscale' : 'opacity-100'}`}>
       <div className="flex justify-between items-center px-1">
         <label className="text-[11px] font-black uppercase text-slate-400 tracking-tight">
           {label} {required && <span className="text-red-500">*</span>}
@@ -96,7 +91,8 @@ function BigInput({
           onChange={handleChange}
           placeholder={placeholder}
           required={required}
-          className="bg-slate-800 border-2 border-slate-700 text-white font-bold px-4 py-4 rounded-2xl outline-none focus:border-emerald-500 transition-all text-base placeholder:text-slate-600 uppercase w-full pr-12"
+          disabled={disabled}
+          className="bg-slate-800 border-2 border-slate-700 text-white font-bold px-4 py-4 rounded-2xl outline-none focus:border-emerald-500 transition-all text-base placeholder:text-slate-600 uppercase w-full pr-12 disabled:cursor-not-allowed"
         />
         <div className="absolute right-4 top-1/2 -translate-y-1/2">
           {icon}
@@ -142,6 +138,10 @@ export default function Home() {
     { volume: '', odometro: '', valor: '', completou: false }
   ])
 
+  const isPlacaPreenchida = useMemo(() => {
+    return formValues.placa.replace(/[^A-Z0-9]/gi, '').length >= 7
+  }, [formValues.placa])
+
   const parseCurrency = (v: any) => Number(String(v || '0').replace(/\D/g, '')) / 100
   const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
 
@@ -182,6 +182,7 @@ export default function Home() {
   }, [])
 
   const handleAbastecimentoChange = (index: number, field: string, value: any) => {
+    if (!isPlacaPreenchida) return;
     const novos = [...abastecimentos]
     novos[index] = { ...novos[index], [field]: value }
     setAbastecimentos(novos)
@@ -234,8 +235,7 @@ export default function Home() {
 
   const stats = useMemo(() => {
     const bruto = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
-    const receita = round2(bruto * 0.88) // NOVO: 12% de desconto calculados para a coluna 'receita'
-    
+    const receita = round2(bruto * 0.88) 
     const diesel = round2(abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0))
     const despesasOp = round2(CAMPOS_OPERACIONAIS.reduce((acc, campo) => {
         let v = parseCurrency(formValues[campo]);
@@ -243,20 +243,15 @@ export default function Home() {
         return acc + v;
     }, 0))
     const despesasTotais = round2(diesel + despesasOp)
-    
-    const lucro = round2(receita - despesasTotais) // NOVO: Lucro agora subtrai as despesas da 'receita' (que já tem o desconto)
+    const lucro = round2(receita - despesasTotais)
     
     return { bruto, receita, despesas: despesasTotais, lucro }
   }, [formValues, abastecimentos])
 
   function handleTrySubmit(e: React.FormEvent) {
     e.preventDefault()
-    const placaLimpa = formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase()
-    if (placaLimpa.length >= 7 && odometroAnteriorBanco === null) {
-      return Swal.fire('Aguarde', 'Buscando KM anterior no banco...', 'info')
-    }
-    if (!formValues.placa || !formValues.motorista) {
-      return Swal.fire('Atenção', 'Preencha placa e motorista', 'warning')
+    if (!isPlacaPreenchida || !formValues.motorista) {
+      return Swal.fire('Atenção', 'Preencha placa e motorista corretamente', 'warning')
     }
     setIsModalOpen(true)
   }
@@ -271,7 +266,6 @@ export default function Home() {
       const operacionaisTratados: any = {}
       CAMPOS_OPERACIONAIS.forEach(c => { 
         let valorNumerico = round2(parseCurrency(formValues[c]));
-        // Garante que a caixinha sempre seja 20 se vier zerada/vazia
         if (c === 'caixinha' && (valorNumerico === 0 || !valorNumerico)) valorNumerico = 20;
         operacionaisTratados[c] = valorNumerico;
       })
@@ -291,8 +285,8 @@ export default function Home() {
         placa: formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase(),
         user_email: user.email,
         peso_ton: round3(parseNumero(formValues.peso_ton)),
-        preco_ton: parseCurrency(formValues.preco_ton), // <--- VALOR ORIGINAL (SEM DESCONTO)
-        receita: stats.receita, // <--- NOVO CAMPO NO BANCO COM DESCONTO DE 12%
+        preco_ton: parseCurrency(formValues.preco_ton), 
+        receita: stats.receita, 
         abastecimentos_json: processados,
         valor: stats.despesas,
         odometro_atual: parseNumero(processados[processados.length - 1]?.odometro),
@@ -343,7 +337,16 @@ export default function Home() {
             <div className="bg-blue-700 px-6 py-3"><h2 className="text-sm font-black uppercase flex items-center gap-2"><Package size={18} /> Dados da Viagem</h2></div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
               <BigInput label="Motorista" name="motorista" value={formValues.motorista} onChange={handleInputChange} placeholder="NOME DO MOTORISTA" required />
-              <BigInput label="Placa" name="placa" value={formValues.placa} onChange={handleInputChange} placeholder="AAA-0000" required badge={odometroAnteriorBanco !== null && <span className="text-[9px] font-black text-emerald-400 uppercase">KM ANTERIOR: {odometroAnteriorBanco.toLocaleString('pt-BR')}</span>} icon={odometroAnteriorBanco !== null && <CheckCircle2 className="text-emerald-500" size={20} />} />
+              <BigInput 
+                label="Placa" 
+                name="placa" 
+                value={formValues.placa} 
+                onChange={handleInputChange} 
+                placeholder="AAA-0000" 
+                required 
+                badge={odometroAnteriorBanco !== null && <span className="text-[9px] font-black text-emerald-400 uppercase">KM ANTERIOR: {odometroAnteriorBanco.toLocaleString('pt-BR')}</span>} 
+                icon={odometroAnteriorBanco !== null && <CheckCircle2 className="text-emerald-500" size={20} />} 
+              />
               <BigInput label="Data" name="data_frete" value={formValues.data_frete} onChange={handleInputChange} type="date" required />
               <div className="grid grid-cols-2 gap-4">
                 <BigInput label="Frete de" name="frete_de" value={formValues.frete_de} onChange={handleInputChange} />
@@ -356,34 +359,90 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl">
-            <div className="bg-emerald-700 px-6 py-3 flex justify-between items-center">
-              <h2 className="text-sm font-black uppercase flex items-center gap-2"><FuelIcon size={18} /> Abastecimento</h2>
-              <button type="button" onClick={() => setAbastecimentos([...abastecimentos, { volume: '', odometro: '', valor: '', completou: false }])} className="bg-white text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-emerald-50"><Plus size={14} /> ADICIONAR</button>
-            </div>
-            <div className="p-4 space-y-4">
-              {abastecimentosComMedia.map((abs, index) => (
-                <div key={index} className="bg-slate-800/50 p-5 rounded-2xl border border-slate-700 relative space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <BigInput label="Valor Pago" value={abs.valor} onChange={(e: any) => handleAbastecimentoChange(index, 'valor', e.target.value)} isCurrency />
-                    <BigInput label="Odômetro" value={abs.odometro} onChange={(e: any) => handleAbastecimentoChange(index, 'odometro', e.target.value)} placeholder="0" isOdometer />
-                    <BigInput label="Volume (Litros)" value={abs.volume} onChange={(e: any) => handleAbastecimentoChange(index, 'volume', e.target.value)} placeholder="0,00" isDecimal />
+          {/* SEÇÃO ABASTECIMENTO COM VISUAL REFINADO */}
+          <section className="relative">
+            <div className={`bg-slate-900 rounded-3xl overflow-hidden border-2 transition-all duration-700 ${isPlacaPreenchida ? 'border-emerald-500/30 shadow-2xl' : 'border-slate-800'}`}>
+              
+              <div className={`px-6 py-4 flex justify-between items-center transition-colors duration-700 ${isPlacaPreenchida ? 'bg-emerald-600/20' : 'bg-slate-800/50'}`}>
+                <h2 className="text-sm font-black uppercase flex items-center gap-3">
+                  <div className={`p-2 rounded-lg transition-all ${isPlacaPreenchida ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-500'}`}>
+                    <FuelIcon size={20} />
                   </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                      <input type="checkbox" checked={abs.completou} onChange={(e) => handleAbastecimentoChange(index, 'completou', e.target.checked)} className="w-7 h-7 rounded-lg accent-emerald-500" />
-                      <span className="text-xs font-black uppercase text-slate-300">Completou?</span>
-                    </label>
-                    <div className="text-right">
-                       <p className="text-[9px] font-black text-slate-500 uppercase">Média trecho</p>
-                       <p className={`text-2xl font-black ${abs.media_kml > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{abs.media_kml > 0 ? abs.media_kml.toFixed(2) : '--'} <span className="text-xs">km/l</span></p>
+                  Abastecimento
+                </h2>
+                <button 
+                  type="button" 
+                  disabled={!isPlacaPreenchida}
+                  onClick={() => setAbastecimentos([...abastecimentos, { volume: '', odometro: '', valor: '', completou: false }])} 
+                  className="bg-emerald-500 text-slate-950 px-4 py-2 rounded-xl text-[11px] font-black flex items-center gap-2 hover:bg-emerald-400 disabled:hidden transition-all shadow-lg active:scale-95"
+                >
+                  <Plus size={16} /> ADICIONAR NOVO
+                </button>
+              </div>
+              
+              <div className="p-4 space-y-4 relative min-h-[150px]">
+                {/* CAMADA DE BLOQUEIO GLASSMORPHISM */}
+                {!isPlacaPreenchida && (
+                  <div className="absolute inset-0 z-20 backdrop-blur-[2px] bg-slate-950/40 flex flex-col items-center justify-center rounded-b-3xl transition-all duration-500">
+                    <div className="bg-slate-900/95 border-2 border-slate-700 p-6 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-4 max-w-[280px] text-center animate-in zoom-in-95">
+                      <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center text-amber-500 shadow-inner">
+                        <Lock size={28} className="animate-pulse" />
+                      </div>
+                      <div>
+                        <p className="text-white font-black text-sm uppercase tracking-tight">Acesso Bloqueado</p>
+                        <p className="text-slate-400 text-[10px] font-bold uppercase mt-1 leading-relaxed">Primeiro informe a placa do veículo nos dados acima.</p>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                        className="bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-black py-3 px-6 rounded-2xl transition-all"
+                      >
+                        VOLTAR PARA PLACA
+                      </button>
                     </div>
                   </div>
-                  {index > 0 && (
-                    <button type="button" onClick={() => setAbastecimentos(abastecimentos.filter((_, i) => i !== index))} className="absolute -right-2 -top-2 bg-red-600 p-1.5 rounded-full shadow-lg border-2 border-slate-900 text-white"><Trash2 size={14} /></button>
-                  )}
+                )}
+
+                {/* LISTA DE ABASTECIMENTOS */}
+                <div className={!isPlacaPreenchida ? 'pointer-events-none select-none' : ''}>
+                  {abastecimentosComMedia.map((abs, index) => (
+                    <div key={index} className="bg-slate-800/30 p-5 rounded-2xl border border-slate-700/50 relative space-y-4 mb-4 last:mb-0">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <BigInput label="Valor Pago" value={abs.valor} disabled={!isPlacaPreenchida} onChange={(e: any) => handleAbastecimentoChange(index, 'valor', e.target.value)} isCurrency />
+                        <BigInput label="Odômetro" value={abs.odometro} disabled={!isPlacaPreenchida} onChange={(e: any) => handleAbastecimentoChange(index, 'odometro', e.target.value)} isOdometer />
+                        <BigInput label="Volume (Litros)" value={abs.volume} disabled={!isPlacaPreenchida} onChange={(e: any) => handleAbastecimentoChange(index, 'volume', e.target.value)} isDecimal />
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
+                        <label className="flex items-center gap-3 cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            disabled={!isPlacaPreenchida}
+                            checked={abs.completou} 
+                            onChange={(e) => handleAbastecimentoChange(index, 'completou', e.target.checked)} 
+                            className="w-7 h-7 rounded-lg accent-emerald-500" 
+                          />
+                          <span className="text-xs font-black uppercase text-slate-300">Completou o Tanque?</span>
+                        </label>
+                        <div className="text-right">
+                           <p className="text-[9px] font-black text-slate-500 uppercase">Média trecho</p>
+                           <p className={`text-2xl font-black ${abs.media_kml > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                             {abs.media_kml > 0 ? abs.media_kml.toFixed(2) : '--'} <span className="text-xs">km/l</span>
+                           </p>
+                        </div>
+                      </div>
+                      {index > 0 && (
+                        <button 
+                            type="button" 
+                            onClick={() => setAbastecimentos(abastecimentos.filter((_, i) => i !== index))} 
+                            className="absolute -right-2 -top-2 bg-red-600 p-1.5 rounded-full shadow-lg border-2 border-slate-900 text-white"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           </section>
 
@@ -421,7 +480,7 @@ export default function Home() {
               </div>
           </section>
 
-          <div className="pt-4">
+          <div className="pt-4 pb-12">
             <div className="bg-slate-900 p-6 rounded-3xl border-2 border-emerald-500 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
               <div className="flex items-center gap-8 w-full md:w-auto justify-around md:justify-start text-white">
                 <div>
@@ -453,7 +512,7 @@ export default function Home() {
                                 <span className="text-2xl font-black text-white tracking-widest">{formValues.placa}</span>
                             </div>
                             <div className="flex justify-between items-center pt-2">
-                                <span className="text-slate-400 font-bold uppercase text-sm">Lucro Visual:</span>
+                                <span className="text-slate-400 font-bold uppercase text-sm">Lucro:</span>
                                 <span className="text-2xl font-black text-emerald-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.lucro)}</span>
                             </div>
                         </div>
