@@ -360,23 +360,29 @@ export default function Home() {
           </section>
 
           {/* SEÇÃO ABASTECIMENTO COM VISUAL REFINADO */}
+          {/* SEÇÃO ABASTECIMENTO COM VISUAL REFINADO E BOTÃO RESPONSIVO */}
           <section className="relative">
             <div className={`bg-slate-900 rounded-3xl overflow-hidden border-2 transition-all duration-700 ${isPlacaPreenchida ? 'border-emerald-500/30 shadow-2xl' : 'border-slate-800'}`}>
               
-              <div className={`px-6 py-4 flex justify-between items-center transition-colors duration-700 ${isPlacaPreenchida ? 'bg-emerald-600/20' : 'bg-slate-800/50'}`}>
-                <h2 className="text-sm font-black uppercase flex items-center gap-3">
+              {/* Header com correção de responsividade para o botão */}
+              <div className={`px-4 md:px-6 py-4 flex flex-wrap items-center justify-between gap-3 transition-colors duration-700 ${isPlacaPreenchida ? 'bg-emerald-600/20' : 'bg-slate-800/50'}`}>
+                <h2 className="text-sm font-black uppercase flex items-center gap-2 md:gap-3 flex-1 min-w-[120px]">
                   <div className={`p-2 rounded-lg transition-all ${isPlacaPreenchida ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-500'}`}>
-                    <FuelIcon size={20} />
+                    <FuelIcon size={18} className="md:w-[20px] md:h-[20px]" />
                   </div>
-                  Abastecimento
+                  <span className="truncate">Abastecimento</span>
                 </h2>
+
                 <button 
                   type="button" 
                   disabled={!isPlacaPreenchida}
                   onClick={() => setAbastecimentos([...abastecimentos, { volume: '', odometro: '', valor: '', completou: false }])} 
-                  className="bg-emerald-500 text-slate-950 px-4 py-2 rounded-xl text-[11px] font-black flex items-center gap-2 hover:bg-emerald-400 disabled:hidden transition-all shadow-lg active:scale-95"
+                  className="bg-emerald-500 text-slate-950 h-10 md:h-11 px-3 md:px-5 rounded-xl text-[10px] md:text-[11px] font-black flex items-center justify-center gap-2 hover:bg-emerald-400 disabled:hidden transition-all shadow-lg active:scale-95 whitespace-nowrap border-b-2 border-emerald-700 active:border-b-0"
                 >
-                  <Plus size={16} /> ADICIONAR NOVO
+                  <Plus size={16} />
+                  {/* Texto adaptativo: Esconde o "NOVO" em telas menores que 380px para não estourar */}
+                  <span className="hidden sm:inline">ADICIONAR NOVO</span>
+                  <span className="inline sm:hidden">ADICIONAR</span>
                 </button>
               </div>
               
