@@ -104,20 +104,21 @@ export default function FretesPage() {
         <div className="space-y-5">
           {fretes.map((frete) => {
             const paradas = frete.abastecimentos_json || [];
-            const gastoDiesel = paradas.reduce((acc: number, curr: any) => acc + parseCurrency(curr.valor), 0);
-            
-            const despesasOperacionaisAtivas = Object.keys(labelMap).filter(key => (Number(frete[key]) || 0) > 0);
-            const totalOutrosGastos = despesasOperacionaisAtivas.reduce((acc, key) => acc + (Number(frete[key]) || 0), 0);
-            
-            const despesasTotal = gastoDiesel + totalOutrosGastos;
-            
-            // LÓGICA SOLICITADA: Se receita do banco for null ou 0, faz o cálculo manual
+
+            // 1. DESPESAS: Pega direto da coluna 'valor' do banco (que já é a soma de Diesel + Op)
+            const despesasTotal = Number(frete.valor) || 0;
+
+            // 2. RECEITA: Prioriza a coluna 'receita' do banco
             const receitaBanco = Number(frete.receita) || 0;
             const receitaTotal = receitaBanco > 0 
               ? receitaBanco 
               : (Number(frete.peso_ton) || 0) * (Number(frete.preco_ton) || 0);
-            
+
+            // 3. LUCRO: O lucro agora é a subtração de dois valores que vieram do banco
             const lucro = receitaTotal - despesasTotal;
+
+            // Apenas para o detalhamento visual (ícones), mantemos o filtro:
+            const despesasOperacionaisAtivas = Object.keys(labelMap).filter(key => (Number(frete[key]) || 0) > 0);
 
             return (
               <div key={frete.id} className={`group bg-slate-900/50 border transition-all duration-300 rounded-3xl overflow-hidden ${expanded === frete.id ? 'border-emerald-500/40 bg-slate-900 shadow-2xl' : 'border-slate-800 hover:border-slate-700'}`}>
@@ -189,16 +190,7 @@ export default function FretesPage() {
                           <span className="text-[9px] text-slate-500 uppercase font-black">Peso Total</span>
                           <span className="text-sm font-bold text-slate-200">{frete.peso_ton} Ton</span>
                         </div>
-                        <div className="flex flex-col">
-                          <span className="text-[9px] text-slate-500 uppercase font-black">Receita com Desconto</span>
-                          <span className={`text-[10px] mt-1 font-black px-2.5 py-0.5 rounded-md w-fit border ${
-                            receitaBanco 
-                            ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
-                            : 'bg-red-500/10 text-red-500 border-red-500/20'
-                          }`}>
-                            {receitaBanco ? 'SIM' : 'NÃO'}
-                          </span>
-                        </div>
+
                       </div>
                     </div>
                     

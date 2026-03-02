@@ -134,17 +134,17 @@ export default function EditFretePage() {
     
     // 1. Receita Bruta -> Aplica-se o desconto de 12% (x 0.88)
     const receitaBruta = (parseNumero(formValues.peso_ton)) * parseCurrency(formValues.preco_ton)
-    const receitaComDesconto = receitaBruta * 0.88
+  
     
     // 2. Despesas
     const custoDiesel = abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0)
     const outrosCustos = camposOperacionais.reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0)
-    const totalDespesas = custoDiesel + outrosCustos
+    const totalDespesas = custoDiesel + outrosCustos + receitaBruta * 0.12
     
     return { 
       despesas: totalDespesas, 
-      receitaFinal: receitaComDesconto,
-      lucro: receitaComDesconto - totalDespesas 
+      receitaFinal: receitaBruta,
+      lucro: receitaBruta - totalDespesas 
     }
   }, [formValues, abastecimentos])
 
@@ -285,7 +285,7 @@ export default function EditFretePage() {
                 </div>
                 <div className="h-10 w-[1px] bg-slate-800 hidden md:block" />
                 <div>
-                  <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Saldo c/ Desconto 12%</p>
+                  <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Lucro Líquido</p>
                   <p className="text-3xl font-black">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.lucro)}</p>
                 </div>
               </div>

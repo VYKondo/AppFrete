@@ -11,9 +11,8 @@ import {
   CheckCircle2, Trash2, Plus, Save, History, Fuel as FuelIcon, Lock, AlertTriangle, RefreshCw, WifiOff
 } from 'lucide-react'
 
-// ... (LABELS_CAMPOS, CAMPOS_OPERACIONAIS e funções auxiliares round mantidas iguais)
 const STORAGE_KEY = 'rascunho_frete_pwa'
-const APP_VERSION = '1.0.4' 
+const APP_VERSION = '1.0.4'
 
 const LABELS_CAMPOS: Record<string, string> = {
   pedagio: 'Pedágio', mecanica: 'Mecânica', eletrica: 'Elétrica', borracharia: 'Borracharia',
@@ -25,7 +24,6 @@ const CAMPOS_OPERACIONAIS = Object.keys(LABELS_CAMPOS);
 const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100
 const round3 = (num: number) => Math.round((num + Number.EPSILON) * 1000) / 1000
 
-// Componente BigInput mantido igual
 function BigInput({ label, value, onChange, name, type = "text", isCurrency = false, isDecimal = false, isOdometer = false, placeholder = "", required = false, badge = null, icon = null, disabled = false }: any) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (disabled) return;
@@ -33,8 +31,8 @@ function BigInput({ label, value, onChange, name, type = "text", isCurrency = fa
       const val = e.target.value.replace(/\D/g, '')
       if (!val) return onChange({ target: { name, value: '' } })
       let formatted;
-      if (isOdometer) { formatted = new Intl.NumberFormat('pt-BR').format(Number(val)) } 
-      else if (isCurrency) { formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val) / 100) } 
+      if (isOdometer) { formatted = new Intl.NumberFormat('pt-BR').format(Number(val)) }
+      else if (isCurrency) { formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val) / 100) }
       else {
         const isWeight = name === 'peso_ton'
         formatted = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: isWeight ? 3 : 2, maximumFractionDigits: isWeight ? 3 : 2 }).format(Number(val) / (isWeight ? 1000 : 100))
@@ -63,8 +61,7 @@ export default function Home() {
   const [role, setRole] = useState<string | 'loading'>('loading')
   const [userName, setUserName] = useState('')
   const [hydrated, setHydrated] = useState(false)
-  
-  // NOVOS ESTADOS PARA GESTÃO DE REDE E ODÔMETRO
+
   const [odometroAnteriorBanco, setOdometroAnteriorBanco] = useState<number | null>(null)
   const [buscandoOdo, setBuscandoOdo] = useState(false)
   const [errorOdo, setErrorOdo] = useState(false)
@@ -82,13 +79,14 @@ export default function Home() {
   const parseCurrency = (v: any) => Number(String(v || '0').replace(/\D/g, '')) / 100
   const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
 
-  // 1. FUNÇÃO DE BUSCA ROBUSTA
+  // 1. BUSCA DE ODÔMETRO AJUSTADA (RESISTENTE A FALHAS)
   const buscarUltimoOdometro = useCallback(async () => {
     const placaLimpa = formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase()
     if (placaLimpa.length < 7) return
 
     setBuscandoOdo(true)
-    setErrorOdo(false)
+    // Não limpamos o erro aqui para o usuário saber que a última tentativa falhou 
+    // até que a nova tenha sucesso.
 
     try {
       const { data, error } = await supabase
@@ -100,16 +98,54 @@ export default function Home() {
         .maybeSingle()
 
       if (error) throw error
+      
       setOdometroAnteriorBanco(data ? Number(data.odometro_atual) : 0)
+      setErrorOdo(false) // Sucesso! Limpa o erro.
     } catch (err) {
-      console.error("Erro ao buscar odômetro:", err)
-      setErrorOdo(true) // Ativa estado de erro visualmente
+      console.error("Erro na sincronização:", err)
+      setErrorOdo(true) // Ativa o badge de falha
     } finally {
       setBuscandoOdo(false)
     }
   }, [formValues.placa])
 
-  // 2. TRIGGER DE REDE (ONLINE/OFFLINE)
+  // 2. TIMER PERSISTENTE (USANDO REF PARA EVITAR QUEBRAS)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Limpa qualquer timer existente antes de começar
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
+    if (isPlacaPreenchida) {
+      console.log("Iniciando monitoramento constante (90s)...");
+      
+      intervalRef.current = setInterval(() => {
+        buscarUltimoOdometro();
+      }, 90000); 
+    }
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isPlacaPreenchida, buscarUltimoOdometro]);
+
+  // 2. TIMER DE RECARGA AUTOMÁTICA (1 minuto e meio)
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    if (isPlacaPreenchida) {
+      interval = setInterval(() => {
+        // Dispara a busca independente de estar em primeiro ou segundo plano
+        buscarUltimoOdometro();
+      }, 90000); // 90 segundos
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isPlacaPreenchida, buscarUltimoOdometro]);
+
+  // 3. TRIGGER DE REDE E PLACA
   useEffect(() => {
     const handleOnline = () => {
       if (isPlacaPreenchida && (odometroAnteriorBanco === null || errorOdo)) {
@@ -120,7 +156,6 @@ export default function Home() {
     return () => window.removeEventListener('online', handleOnline)
   }, [isPlacaPreenchida, odometroAnteriorBanco, errorOdo, buscarUltimoOdometro])
 
-  // 3. EFEITO PARA A PLACA
   useEffect(() => {
     if (!isPlacaPreenchida) {
       setOdometroAnteriorBanco(null)
@@ -130,7 +165,7 @@ export default function Home() {
     buscarUltimoOdometro()
   }, [isPlacaPreenchida, buscarUltimoOdometro])
 
-  // Efeitos de rascunho e autenticação mantidos...
+  // LÓGICA DE HIDRATAÇÃO E AUTH
   useEffect(() => {
     const lastVersion = localStorage.getItem('app_version')
     if (lastVersion !== APP_VERSION) { localStorage.removeItem(STORAGE_KEY); localStorage.setItem('app_version', APP_VERSION) }
@@ -176,9 +211,10 @@ export default function Home() {
     setAbastecimentos(novos)
   }
 
+  // CÁLCULO DA MÉDIA COM DIFERENCIAÇÃO DE PRIMEIRO REGISTRO
   const abastecimentosComMedia = useMemo(() => {
-    // Agora o cálculo reage IMEDIATAMENTE quando odometroAnteriorBanco muda
-    let ultimoOdoCheio = odometroAnteriorBanco ?? 0;
+    // Se o banco retornar 0 ou null, tratamos como primeiro registro do sistema
+    let ultimoOdoConfiavel = odometroAnteriorBanco && odometroAnteriorBanco > 0 ? odometroAnteriorBanco : 0;
     let volumeAcumulado = 0;
     
     return abastecimentos.map((abs) => {
@@ -188,11 +224,13 @@ export default function Home() {
       let media = 0;
       
       if (abs.completou && odoAtual > 0 && volumeAcumulado > 0) {
-        if (ultimoOdoCheio > 0) {
-          const kmPercorrida = odoAtual - ultimoOdoCheio;
+        // Só calcula se tivermos um odômetro anterior (do banco ou de abastecimento anterior nesta lista)
+        if (ultimoOdoConfiavel > 0) {
+          const kmPercorrida = odoAtual - ultimoOdoConfiavel;
           if (kmPercorrida > 0) media = round2(kmPercorrida / volumeAcumulado);
         }
-        ultimoOdoCheio = odoAtual; 
+        // Atualiza o ponto de referência para o próximo item da lista
+        ultimoOdoConfiavel = odoAtual; 
         volumeAcumulado = 0;
       }
       return { ...abs, media_kml: media };
@@ -201,14 +239,14 @@ export default function Home() {
 
   const stats = useMemo(() => {
     const bruto = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
-    const receita = round2(bruto * 0.88) 
+    const receita = round2(bruto) 
     const diesel = round2(abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0))
     const despesasOp = round2(CAMPOS_OPERACIONAIS.reduce((acc, campo) => {
         let v = parseCurrency(formValues[campo]);
         if (campo === 'caixinha' && v === 0) v = 20;
         return acc + v;
     }, 0))
-    const despesasTotais = round2(diesel + despesasOp)
+    const despesasTotais = round2(diesel + despesasOp + receita * 0.12)
     const lucro = round2(receita - despesasTotais)
     return { bruto, receita, despesas: despesasTotais, lucro }
   }, [formValues, abastecimentos])
@@ -273,7 +311,6 @@ export default function Home() {
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
               <BigInput label="Motorista" name="motorista" value={formValues.motorista} onChange={handleInputChange} placeholder="NOME DO MOTORISTA" required />
               
-              {/* INPUT DE PLACA COM FEEDBACK DE REDE */}
               <BigInput 
                 label="Placa" 
                 name="placa" 
@@ -283,11 +320,13 @@ export default function Home() {
                 required 
                 badge={
                   buscandoOdo ? (
-                    <span className="flex items-center gap-1 text-[9px] font-black text-blue-400 animate-pulse"><RefreshCw size={10} className="animate-spin" /> BUSCANDO KM...</span>
+                    <span className="flex items-center gap-1 text-[9px] font-black text-blue-400 animate-pulse"><RefreshCw size={10} className="animate-spin" /> SINCRONIZANDO...</span>
                   ) : errorOdo ? (
                     <button type="button" onClick={buscarUltimoOdometro} className="flex items-center gap-1 text-[9px] font-black text-red-400 uppercase hover:underline"><WifiOff size={10} /> FALHA NA REDE (REPETIR)</button>
                   ) : odometroAnteriorBanco !== null ? (
-                    <span className="text-[9px] font-black text-emerald-400 uppercase">KM ANTERIOR: {odometroAnteriorBanco.toLocaleString('pt-BR')}</span>
+                    <span className="text-[9px] font-black text-emerald-400 uppercase">
+                      {odometroAnteriorBanco > 0 ? `KM ANTERIOR: ${odometroAnteriorBanco.toLocaleString('pt-BR')}` : "PRIMEIRO REGISTRO"}
+                    </span>
                   ) : null
                 } 
                 icon={
@@ -309,7 +348,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* SEÇÃO ABASTECIMENTO (Igual ao anterior com o botão responsivo) */}
           <section className="relative">
             <div className={`bg-slate-900 rounded-3xl overflow-hidden border-2 transition-all duration-700 ${isPlacaPreenchida ? 'border-emerald-500/30 shadow-2xl' : 'border-slate-800'}`}>
               <div className={`px-4 md:px-6 py-4 flex flex-wrap items-center justify-between gap-3 transition-colors duration-700 ${isPlacaPreenchida ? 'bg-emerald-600/20' : 'bg-slate-800/50'}`}>
@@ -368,7 +406,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* SEÇÃO OPERACIONAIS E FOOTER (Mantidos iguais) */}
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl p-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                {CAMPOS_OPERACIONAIS.map(campo => {
