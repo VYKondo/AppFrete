@@ -1,4 +1,5 @@
 'use client'
+
 export const dynamic = 'force-dynamic'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState, useMemo, ChangeEvent, FormEvent } from 'react'
@@ -9,13 +10,46 @@ interface FreteData {
   motorista: string;
   placa: string;
   data_frete: string;
-  peso_ton: number | string;
-  preco_ton: number | string;
+  peso_ton: string;
+  preco_ton: string;
   odometro_atual: number;
   [key: string]: any;
 }
 
+interface Abastecimento {
+  volume: string;
+  odometro: string;
+  valor: string;
+  completou: boolean;
+  media_kml?: number;
+}
+
 const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
+
+// Funções de formatação puras
+const formatCurrency = (value: any) => {
+  const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / 100;
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num || 0);
+}
+
+const formatDecimal = (value: any, isWeight = false) => {
+  const divisor = isWeight ? 1000 : 100;
+  const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / divisor;
+  return new Intl.NumberFormat('pt-BR', { 
+    minimumFractionDigits: isWeight ? 3 : 2, 
+    maximumFractionDigits: isWeight ? 3 : 2 
+  }).format(num || 0);
+}
+
+const formatOdometer = (value: any) => {
+  const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, ''));
+  return new Intl.NumberFormat('pt-BR').format(num || 0);
+}
+
+const parseCurrency = (v: any) => Number(String(v).replace(/\D/g, '')) / 100;
+const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0;
+const parseDecimalMask = (v: any, isWeight = false) => Number(String(v).replace(/\D/g, '')) / (isWeight ? 1000 : 100);
+const parseOdometer = (v: any) => Number(String(v || '0').replace(/\D/g, '')) || 0;
 
 export default function EditFretePage() {
   const router = useRouter()
@@ -23,7 +57,7 @@ export default function EditFretePage() {
   const id = params?.id
 
   const [formValues, setFormValues] = useState<FreteData | null>(null)
-  const [abastecimentos, setAbastecimentos] = useState<any[]>([])
+  const [abastecimentos, setAbastecimentos] = useState<Abastecimento[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [odometroAnterior, setOdometroAnterior] = useState(0)
@@ -33,54 +67,26 @@ export default function EditFretePage() {
     'patio', 'limpeza', 'lavagem', 'arla', 'cartao', 'diversos_operacional', 'caixinha'
   ]
 
-  const formatCurrency = (value: any) => {
-    if (value === null || value === undefined || value === '') return 'R$ 0,00';
-    const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / 100;
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num || 0)
-  }
-
-  const formatDecimal = (value: any, isWeight = false) => {
-    if (value === null || value === undefined || value === '') return isWeight ? '0,000' : '0,00';
-    const divisor = isWeight ? 1000 : 100;
-    const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '')) / divisor;
-    return new Intl.NumberFormat('pt-BR', { 
-      minimumFractionDigits: isWeight ? 3 : 2, 
-      maximumFractionDigits: isWeight ? 3 : 2 
-    }).format(num || 0)
-  }
-
-  const formatOdometer = (value: any) => {
-    if (!value) return '';
-    const num = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, ''));
-    return new Intl.NumberFormat('pt-BR').format(num);
-  }
-
-  const parseCurrency = (v: any) => {
-    if (typeof v === 'number') return v
-    const cleanValue = String(v).replace(/[^\d]/g, '')
-    return cleanValue ? Number(cleanValue) / 100 : 0
-  }
-
-  const parseNumero = (v: any) => {
-    if (typeof v === 'number') return v;
-    return parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0;
-  }
-
-  const parseOdometer = (v: any) => {
-    return Number(String(v || '0').replace(/\D/g, '')) || 0;
-  }
-
   useEffect(() => {
     async function fetchFrete() {
       if (!id) return
       const { data, error } = await supabase.from('fretes').select('*').eq('id', id).single()
       if (error) { router.push('/fretes'); return }
       
-      const initialValues = { ...data }
-      camposOperacionais.forEach(campo => { initialValues[campo] = data[campo] || 0 })
+      const initialValues: FreteData = { 
+        ...data,
+        peso_ton: formatDecimal(data.peso_ton, true),
+        preco_ton: formatCurrency(data.preco_ton)
+      }
+
+      camposOperacionais.forEach(campo => { 
+        initialValues[campo] = formatCurrency(data[campo] || 0) 
+      })
       
       const absFormatados = (data.abastecimentos_json || []).map((a: any) => ({
         ...a,
+        valor: formatCurrency(a.valor),
+        volume: formatDecimal(a.volume),
         odometro: formatOdometer(a.odometro)
       }))
 
@@ -104,7 +110,7 @@ export default function EditFretePage() {
     let litrosAcum = 0;
 
     return abastecimentos.map((abs) => {
-      const vol = parseNumero(abs.volume);
+      const vol = parseDecimalMask(abs.volume);
       const odo = parseOdometer(abs.odometro);
       const comp = abs.completou;
 
@@ -130,20 +136,21 @@ export default function EditFretePage() {
 
   // CÁLCULOS PARA EXIBIÇÃO E SALVAMENTO
   const stats = useMemo(() => {
-    if (!formValues) return { despesas: 0, lucro: 0, receitaFinal: 0 }
+    if (!formValues) return { despesas: 0, lucro: 0, receitaBruta: 0 }
     
-    // 1. Receita Bruta -> Aplica-se o desconto de 12% (x 0.88)
-    const receitaBruta = (parseNumero(formValues.peso_ton)) * parseCurrency(formValues.preco_ton)
-  
+    // 1. Receita Bruta (Peso x Preço)
+    const receitaBruta = parseDecimalMask(formValues.peso_ton, true) * parseCurrency(formValues.preco_ton);
     
-    // 2. Despesas
-    const custoDiesel = abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0)
-    const outrosCustos = camposOperacionais.reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0)
-    const totalDespesas = custoDiesel + outrosCustos + receitaBruta * 0.12
+    // 2. Despesas (Diesel + Operacional + 12% da Receita Bruta)
+    const custoDiesel = abastecimentos.reduce((acc, curr) => acc + parseCurrency(curr.valor), 0);
+    const outrosCustos = camposOperacionais.reduce((acc, campo) => acc + parseCurrency(formValues[campo]), 0);
+    const taxaAdministrativa = receitaBruta * 0.12; // 12% em cima do frete bruto
+    
+    const totalDespesas = custoDiesel + outrosCustos + taxaAdministrativa;
     
     return { 
       despesas: totalDespesas, 
-      receitaFinal: receitaBruta,
+      receitaBruta: receitaBruta,
       lucro: receitaBruta - totalDespesas 
     }
   }, [formValues, abastecimentos])
@@ -154,7 +161,7 @@ export default function EditFretePage() {
     setSaving(true)
     
     const paradasProntas = abastecimentosComMedia.map(abs => ({
-      volume: round2(parseNumero(abs.volume)),
+      volume: round2(parseDecimalMask(abs.volume)),
       odometro: parseOdometer(abs.odometro),
       valor: parseCurrency(abs.valor),
       completou: !!abs.completou,
@@ -165,18 +172,22 @@ export default function EditFretePage() {
     
     const dataToSave: any = {
       ...formValues,
-      peso_ton: parseNumero(formValues.peso_ton),
+      peso_ton: parseDecimalMask(formValues.peso_ton, true),
       preco_ton: parseCurrency(formValues.preco_ton),
       abastecimentos_json: paradasProntas,
-      // SALVANDO A RECEITA COM DESCONTO NO BANCO
-      receita: round2(stats.receitaFinal),
-      // SALVANDO O TOTAL DE DESPESAS NO CAMPO VALOR
+      
+      // Salvando a Receita Bruta integral
+      receita: round2(stats.receitaBruta),
+      // Salvando o total de despesas (que agora inclui os 12%)
       valor: round2(stats.despesas),
+      
       odometro_atual: ultimo.odometro || formValues.odometro_atual,
       media_kml: round2(ultimo.media_kml || 0),
     }
 
-    camposOperacionais.forEach(campo => { dataToSave[campo] = parseCurrency(formValues[campo]) })
+    camposOperacionais.forEach(campo => { 
+      dataToSave[campo] = parseCurrency(formValues[campo]) 
+    })
     
     delete dataToSave.id
     delete dataToSave.created_at
@@ -214,8 +225,8 @@ export default function EditFretePage() {
               <BigInput label="Placa" value={formValues.placa} onChange={(e: any) => setFormValues({...formValues, placa: e.target.value.toUpperCase()})} placeholder="AAA-0000" required />
               <BigInput label="Data" type="date" value={formValues.data_frete} onChange={(e: any) => setFormValues({...formValues, data_frete: e.target.value})} required />
               <div className="grid grid-cols-2 gap-4">
-                <BigInput label="Peso (Ton)" name="peso_ton" value={formatDecimal(formValues.peso_ton, true)} onChange={(e: any) => setFormValues({...formValues, peso_ton: e.target.value})} isDecimal />
-                <BigInput label="Valor/Ton" value={formatCurrency(formValues.preco_ton)} onChange={(e: any) => setFormValues({...formValues, preco_ton: e.target.value})} isCurrency />
+                <BigInput label="Peso (Ton)" name="peso_ton" value={formValues.peso_ton} onChange={(e: any) => setFormValues({...formValues, peso_ton: e.target.value})} isDecimal />
+                <BigInput label="Valor/Ton" value={formValues.preco_ton} onChange={(e: any) => setFormValues({...formValues, preco_ton: e.target.value})} isCurrency />
               </div>
             </div>
           </section>
@@ -223,19 +234,19 @@ export default function EditFretePage() {
           <section className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl">
             <div className="bg-emerald-700 px-6 py-3 flex justify-between items-center">
               <h2 className="text-sm font-black uppercase flex items-center gap-2"><Fuel size={18} /> Abastecimento</h2>
-              <button type="button" onClick={() => setAbastecimentos([...abastecimentos, { volume: 0, odometro: '', valor: 0, completou: false }])} className="bg-white text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black flex items-center gap-1"><Plus size={14} /> ADICIONAR</button>
+              <button type="button" onClick={() => setAbastecimentos([...abastecimentos, { volume: '', odometro: '', valor: '', completou: false }])} className="bg-white text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black flex items-center gap-1"><Plus size={14} /> ADICIONAR</button>
             </div>
             <div className="p-4 space-y-4">
               {abastecimentosComMedia.map((abs, index) => (
                 <div key={index} className="bg-slate-800/50 p-5 rounded-2xl border border-slate-700 relative space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <BigInput label="Valor Pago" value={formatCurrency(abs.valor)} onChange={(e: any) => {
+                    <BigInput label="Valor Pago" value={abs.valor} onChange={(e: any) => {
                        const n = [...abastecimentos]; n[index].valor = e.target.value; setAbastecimentos(n);
                     }} isCurrency />
                     <BigInput label="Odômetro" value={abs.odometro} onChange={(e: any) => {
                        const n = [...abastecimentos]; n[index].odometro = e.target.value; setAbastecimentos(n);
                     }} placeholder="0" isOdometer />
-                    <BigInput label="Litros" value={formatDecimal(abs.volume)} onChange={(e: any) => {
+                    <BigInput label="Litros" value={abs.volume} onChange={(e: any) => {
                        const n = [...abastecimentos]; n[index].volume = e.target.value; setAbastecimentos(n);
                     }} isDecimal />
                   </div>
@@ -248,7 +259,7 @@ export default function EditFretePage() {
                     </label>
                     <div className="text-right">
                        <p className="text-[9px] font-black text-slate-500 uppercase">Média trecho</p>
-                       <p className={`text-2xl font-black ${abs.media_kml > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{abs.media_kml > 0 ? abs.media_kml.toFixed(2) : '--'} <span className="text-xs">km/l</span></p>
+                       <p className={`text-2xl font-black ${abs.media_kml && abs.media_kml > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{abs.media_kml && abs.media_kml > 0 ? abs.media_kml.toFixed(2) : '--'} <span className="text-xs">km/l</span></p>
                     </div>
                   </div>
                   {index > 0 && (
@@ -264,12 +275,11 @@ export default function EditFretePage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {camposOperacionais.map(campo => (
                 <div key={campo}>
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{campo.replace('_', ' ')}</label>
-                    <input
-                     type="text"
-                     value={formatCurrency(formValues[campo])}
-                     onChange={(e: any) => setFormValues({...formValues, [campo]: e.target.value})}
-                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-sm font-bold text-white outline-none focus:ring-2 ring-emerald-500/20"
+                    <BigInput 
+                      label={campo.replace('_', ' ')}
+                      value={formValues[campo]}
+                      onChange={(e: any) => setFormValues({...formValues, [campo]: e.target.value})}
+                      isCurrency
                     />
                 </div>
               ))}
@@ -300,34 +310,25 @@ export default function EditFretePage() {
   )
 }
 
-function BigInput({ label, badge, isCurrency, isDecimal, isOdometer, onChange, name, ...props }: any) {
+function BigInput({ label, badge, isCurrency, isDecimal, isOdometer, onChange, name, value, ...props }: any) {
+  
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    let rawValue = e.target.value;
+    
     if (isCurrency || isDecimal || isOdometer) {
-      const val = e.target.value.replace(/\D/g, '');
-      if (!val) {
+      const numericValue = rawValue.replace(/\D/g, '');
+      if (!numericValue) {
         e.target.value = '';
-        if (onChange) onChange(e);
-        return;
-      }
-
-      let formatted = '';
-
-      if (isOdometer) {
-        formatted = new Intl.NumberFormat('pt-BR').format(Number(val));
       } else {
-        const isWeight = name === 'peso_ton';
-        const divisor = isWeight ? 1000 : 100;
-        const num = Number(val) / divisor;
-        
-        formatted = isCurrency 
-          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num)
-          : new Intl.NumberFormat('pt-BR', { 
-              minimumFractionDigits: isWeight ? 3 : 2, 
-              maximumFractionDigits: isWeight ? 3 : 2 
-            }).format(num);
+        if (isOdometer) {
+          e.target.value = formatOdometer(numericValue);
+        } else {
+          const isWeight = name === 'peso_ton';
+          e.target.value = isCurrency 
+            ? formatCurrency(numericValue)
+            : formatDecimal(numericValue, isWeight);
+        }
       }
-      
-      e.target.value = formatted;
     }
     if (onChange) onChange(e);
   };
@@ -341,6 +342,7 @@ function BigInput({ label, badge, isCurrency, isDecimal, isOdometer, onChange, n
       <input 
         {...props}
         name={name}
+        value={value || ''}
         onChange={handleInputChange}
         className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-4 text-white font-bold outline-none focus:ring-2 ring-blue-500/50 transition-all placeholder:text-slate-600"
       />

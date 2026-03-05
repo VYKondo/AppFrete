@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 
 const STORAGE_KEY = 'rascunho_frete_pwa'
-const APP_VERSION = '1.0.4'
+const APP_VERSION = '1.0.5' 
 
 const LABELS_CAMPOS: Record<string, string> = {
   pedagio: 'Pedágio', mecanica: 'Mecânica', eletrica: 'Elétrica', borracharia: 'Borracharia',
@@ -79,73 +79,48 @@ export default function Home() {
   const parseCurrency = (v: any) => Number(String(v || '0').replace(/\D/g, '')) / 100
   const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
 
-  // 1. BUSCA DE ODÔMETRO AJUSTADA (RESISTENTE A FALHAS)
   const buscarUltimoOdometro = useCallback(async () => {
     const placaLimpa = formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase()
     if (placaLimpa.length < 7) return
 
     setBuscandoOdo(true)
-    // Não limpamos o erro aqui para o usuário saber que a última tentativa falhou 
-    // até que a nova tenha sucesso.
 
     try {
       const { data, error } = await supabase
         .from('fretes')
         .select('odometro_atual')
         .eq('placa', placaLimpa)
-        .order('created_at', { ascending: false })
+        .gt('odometro_atual', 0) // <-- CORREÇÃO: Ignora os fretes onde o odômetro foi salvo como 0
+        .order('odometro_atual', { ascending: false })
         .limit(1)
         .maybeSingle()
 
       if (error) throw error
       
       setOdometroAnteriorBanco(data ? Number(data.odometro_atual) : 0)
-      setErrorOdo(false) // Sucesso! Limpa o erro.
+      setErrorOdo(false)
     } catch (err) {
       console.error("Erro na sincronização:", err)
-      setErrorOdo(true) // Ativa o badge de falha
+      setErrorOdo(true)
     } finally {
       setBuscandoOdo(false)
     }
   }, [formValues.placa])
 
-  // 2. TIMER PERSISTENTE (USANDO REF PARA EVITAR QUEBRAS)
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Limpa qualquer timer existente antes de começar
     if (intervalRef.current) clearInterval(intervalRef.current);
-
     if (isPlacaPreenchida) {
-      console.log("Iniciando monitoramento constante (90s)...");
-      
       intervalRef.current = setInterval(() => {
         buscarUltimoOdometro();
       }, 90000); 
     }
-
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [isPlacaPreenchida, buscarUltimoOdometro]);
 
-  // 2. TIMER DE RECARGA AUTOMÁTICA (1 minuto e meio)
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-
-    if (isPlacaPreenchida) {
-      interval = setInterval(() => {
-        // Dispara a busca independente de estar em primeiro ou segundo plano
-        buscarUltimoOdometro();
-      }, 90000); // 90 segundos
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isPlacaPreenchida, buscarUltimoOdometro]);
-
-  // 3. TRIGGER DE REDE E PLACA
   useEffect(() => {
     const handleOnline = () => {
       if (isPlacaPreenchida && (odometroAnteriorBanco === null || errorOdo)) {
@@ -165,7 +140,6 @@ export default function Home() {
     buscarUltimoOdometro()
   }, [isPlacaPreenchida, buscarUltimoOdometro])
 
-  // LÓGICA DE HIDRATAÇÃO E AUTH
   useEffect(() => {
     const lastVersion = localStorage.getItem('app_version')
     if (lastVersion !== APP_VERSION) { localStorage.removeItem(STORAGE_KEY); localStorage.setItem('app_version', APP_VERSION) }
@@ -211,9 +185,7 @@ export default function Home() {
     setAbastecimentos(novos)
   }
 
-  // CÁLCULO DA MÉDIA COM DIFERENCIAÇÃO DE PRIMEIRO REGISTRO
   const abastecimentosComMedia = useMemo(() => {
-    // Se o banco retornar 0 ou null, tratamos como primeiro registro do sistema
     let ultimoOdoConfiavel = odometroAnteriorBanco && odometroAnteriorBanco > 0 ? odometroAnteriorBanco : 0;
     let volumeAcumulado = 0;
     
@@ -224,12 +196,10 @@ export default function Home() {
       let media = 0;
       
       if (abs.completou && odoAtual > 0 && volumeAcumulado > 0) {
-        // Só calcula se tivermos um odômetro anterior (do banco ou de abastecimento anterior nesta lista)
         if (ultimoOdoConfiavel > 0) {
           const kmPercorrida = odoAtual - ultimoOdoConfiavel;
           if (kmPercorrida > 0) media = round2(kmPercorrida / volumeAcumulado);
         }
-        // Atualiza o ponto de referência para o próximo item da lista
         ultimoOdoConfiavel = odoAtual; 
         volumeAcumulado = 0;
       }
@@ -254,35 +224,92 @@ export default function Home() {
   async function handleConfirmSave() {
     setIsModalOpen(false)
     setLoading(true)
+
     try {
+      const abastecimentosValidos = abastecimentos.filter(
+        a => parseNumero(a.odometro) > 0 && parseNumero(a.volume) > 0
+      );
+
+      const todosOdometros = abastecimentos.map(a => parseNumero(a.odometro)).filter(odo => odo > 0);
+      const ultimoOdoInformado = todosOdometros.length > 0 ? todosOdometros[todosOdometros.length - 1] : 0;
+      
+      const refBanco = odometroAnteriorBanco || 0;
+
+      if (ultimoOdoInformado > 0 && refBanco > 0 && ultimoOdoInformado < refBanco) {
+        throw new Error(`O odômetro (${ultimoOdoInformado.toLocaleString()}) não pode ser menor que o anterior (${refBanco.toLocaleString()}).`);
+      }
+
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado')
+      
       const operacionaisTratados: any = {}
       CAMPOS_OPERACIONAIS.forEach(c => { 
         let valorNumerico = round2(parseCurrency(formValues[c]));
         if (c === 'caixinha' && (valorNumerico === 0 || !valorNumerico)) valorNumerico = 20;
         operacionaisTratados[c] = valorNumerico;
       })
-      const processados = abastecimentosComMedia.map(a => ({ ...a, volume: round2(parseNumero(a.volume)), valor: round2(parseCurrency(a.valor)), media_kml: round2(a.media_kml) }))
-      const mediaFinal = [...processados].reverse().find(a => a.media_kml > 0)?.media_kml || 0
+
+      let baseKmParaMedia = refBanco;
+      let volumeAcumuladoParaMedia = 0;
+      
+      const processados = abastecimentosValidos.map(abs => {
+        const odoAtual = parseNumero(abs.odometro);
+        const volumeAtual = parseNumero(abs.volume);
+        volumeAcumuladoParaMedia = round2(volumeAcumuladoParaMedia + volumeAtual);
+        
+        let media_trecho = 0;
+        
+        if (abs.completou && odoAtual > baseKmParaMedia) {
+          if (baseKmParaMedia > 0) {
+            media_trecho = round2((odoAtual - baseKmParaMedia) / volumeAcumuladoParaMedia);
+          }
+          baseKmParaMedia = odoAtual; 
+          volumeAcumuladoParaMedia = 0;
+        }
+        
+        return { ...abs, volume: volumeAtual, valor: parseCurrency(abs.valor), media_kml: media_trecho };
+      });
+
+      const mediaFinal = [...processados].reverse().find(a => a.media_kml > 0)?.media_kml || 0;
+      
       const payload = {
-        ...formValues, ...operacionaisTratados,
+        ...formValues, 
+        ...operacionaisTratados,
         placa: formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase(),
         user_email: user.email,
         peso_ton: round3(parseNumero(formValues.peso_ton)),
         preco_ton: parseCurrency(formValues.preco_ton), 
         receita: stats.receita, 
-        abastecimentos_json: processados,
+        
+        // CORREÇÃO: Fallback garantindo que o JSON vá formatado com zeros se não houver abastecimentos
+        abastecimentos_json: processados.length > 0 
+          ? processados 
+          : [{ volume: 0, odometro: 0, valor: 0, completou: false, media_kml: 0 }], 
+          
         valor: stats.despesas,
-        odometro_atual: parseNumero(processados[processados.length - 1]?.odometro),
+        odometro_atual: ultimoOdoInformado,
         media_kml: round2(mediaFinal)
       }
+
       const { error } = await supabase.from('fretes').insert([payload])
       if (error) throw error
+
       localStorage.removeItem(STORAGE_KEY)
-      await Swal.fire({ title: 'Sucesso!', text: `Frete salvo com sucesso!`, icon: 'success', background: '#0f172a', color: '#fff' })
+      await Swal.fire({ 
+        title: 'Sucesso!', 
+        text: `Frete salvo com sucesso!`, 
+        icon: 'success', 
+        background: '#0f172a', 
+        color: '#fff',
+        confirmButtonColor: '#10b981'
+      })
       window.location.reload()
-    } catch (err: any) { Swal.fire('Erro', err.message, 'error') } finally { setLoading(false) }
+
+    } catch (err: any) { 
+      Swal.fire({ title: 'Atenção', text: err.message, icon: 'error', background: '#0f172a', color: '#fff', confirmButtonColor: '#ef4444' }) 
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   if (!hydrated || role === 'loading') return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-emerald-500 font-bold animate-pulse">CARREGANDO...</div>
@@ -291,18 +318,18 @@ export default function Home() {
     <div className="min-h-screen bg-slate-950 text-slate-100 p-3 md:p-6 font-sans">
       <div className="max-w-4xl mx-auto space-y-6">
         <header className="flex items-center justify-between bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg">
-           <div className="flex items-center gap-4">
-             <div className="p-3 bg-emerald-600 rounded-xl"><Truck size={24} className="text-white" /></div>
-             <div>
-               <h1 className="text-xl font-black uppercase tracking-tight">Novo Frete</h1>
-               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{userName}</p>
-             </div>
-           </div>
-           {role === 'admin' && (
-             <Link href="/fretes" className="bg-slate-800 px-4 py-2 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all flex items-center gap-2 text-slate-300">
-               <History size={14}/> HISTÓRICO
-             </Link>
-           )}
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-emerald-600 rounded-xl"><Truck size={24} className="text-white" /></div>
+              <div>
+                <h1 className="text-xl font-black uppercase tracking-tight">Novo Frete</h1>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{userName}</p>
+              </div>
+            </div>
+            {role === 'admin' && (
+              <Link href="/fretes" className="bg-slate-800 px-4 py-2 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all flex items-center gap-2 text-slate-300">
+                <History size={14}/> HISTÓRICO
+              </Link>
+            )}
         </header>
 
         <form onSubmit={(e) => { e.preventDefault(); if (!isPlacaPreenchida || !formValues.motorista) return Swal.fire('Atenção', 'Preencha placa e motorista corretamente', 'warning'); setIsModalOpen(true); }} className="space-y-6">

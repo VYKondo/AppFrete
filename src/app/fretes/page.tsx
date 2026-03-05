@@ -206,6 +206,7 @@ export default function FretesPage() {
                               <th className="px-6 py-3">Parada</th>
                               <th className="px-6 py-3">Valor</th>
                               <th className="px-6 py-3">Odômetro</th>
+                              <th className="px-6 py-3">Volume</th>
                               <th className="px-6 py-3 text-right">Média</th>
                             </tr>
                           </thead>
@@ -215,6 +216,7 @@ export default function FretesPage() {
                                 <td className="px-6 py-3 text-slate-400 whitespace-nowrap">#0{i + 1}</td>
                                 <td className="px-6 py-3 text-red-400/80 font-medium">{formatCurrency(parseCurrency(p.valor))}</td>
                                 <td className="px-6 py-3">{p.odometro} km</td>
+                                <td className="px-6 py-3">{p.volume} L</td>
                                 <td className="px-6 py-3 text-right font-black text-emerald-500">
                                   {p.media_kml > 0 ? `${Number(p.media_kml).toFixed(2)}` : '--'}
                                 </td>
