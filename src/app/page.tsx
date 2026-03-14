@@ -100,16 +100,25 @@ export default function Home() {
 
   const isPlacaPreenchida = useMemo(() => formValues.placa.replace(/[^A-Z0-9]/gi, '').length >= 7, [formValues.placa])
   const parseCurrency = (v: any) => Number(String(v || '0').replace(/\D/g, '')) / 100
-  const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/\./g, '').replace(',', '.')) || 0
+  
+  // CORREÇÃO 1: Regex agressivo para remover letras e espaços inquebráveis, mantendo apenas números e vírgulas.
+  const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/[^\d,]/g, '').replace(',', '.')) || 0
+
+  // CORREÇÃO 3: Verificação se o motorista já começou a preencher o odômetro.
+  const temAbastecimentoPreenchido = useMemo(() => {
+    return abastecimentos.some(a => parseNumero(a.odometro) > 0);
+  }, [abastecimentos]);
 
   const buscarUltimoOdometro = useCallback(async () => {
+    // CORREÇÃO 3: Trava de segurança. Se já tem odômetro preenchido, não sobrepõe.
+    if (temAbastecimentoPreenchido && odometroAnteriorBanco !== null) return;
+
     const placaLimpa = formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase()
     if (placaLimpa.length < 7) return
 
     setBuscandoOdo(true)
 
     try {
-      // TENTA A REDE PRIMEIRO
       const { data, error } = await supabase
         .from('fretes')
         .select('odometro_atual')
@@ -125,7 +134,6 @@ export default function Home() {
       setOdometroAnteriorBanco(odometroBanco)
       setErrorOdo(false)
 
-      // MOMENTO A: Rede funcionou? Clona o dado fresco pro celular
       if (odometroBanco > 0) {
         salvarOdometroLocal(placaLimpa, odometroBanco);
       }
@@ -134,19 +142,18 @@ export default function Home() {
       console.warn("Sem internet! Buscando odômetro da memória do celular...");
       setErrorOdo(true)
       
-      // FALLBACK (CAIU A REDE): Lê a "gaveta" do celular
       const odometroLocal = lerOdometroLocal(placaLimpa);
       
       if (odometroLocal !== null) {
-        setOdometroAnteriorBanco(odometroLocal); // Salva a pátria
+        setOdometroAnteriorBanco(odometroLocal); 
       } else {
-        setOdometroAnteriorBanco(0); // Caminhão nunca andou ou celular novo
+        setOdometroAnteriorBanco(0); 
       }
 
     } finally {
       setBuscandoOdo(false)
     }
-  }, [formValues.placa])
+  }, [formValues.placa, temAbastecimentoPreenchido, odometroAnteriorBanco])
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -187,19 +194,22 @@ export default function Home() {
     const rascunhoSalvo = localStorage.getItem(STORAGE_KEY)
     if (rascunhoSalvo) {
       try {
-        const { formValues: f, abastecimentos: a } = JSON.parse(rascunhoSalvo)
+        // CORREÇÃO 2: Recuperando o odômetro base salvo no rascunho
+        const { formValues: f, abastecimentos: a, odometroAnteriorBanco: o } = JSON.parse(rascunhoSalvo)
         if (f) setFormValues({ ...f, caixinha: 'R$ 20,00' })
         if (a) setAbastecimentos(a)
+        if (o !== undefined && o !== null) setOdometroAnteriorBanco(o)
       } catch (e) { console.error("Erro ao recuperar rascunho", e) }
     }
   }, [])
 
   useEffect(() => {
     if (hydrated) {
-      const dadosParaSalvar = { formValues, abastecimentos }
+      // CORREÇÃO 2: Salvando o odômetro base no rascunho para sobreviver a suspensões de aba
+      const dadosParaSalvar = { formValues, abastecimentos, odometroAnteriorBanco }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dadosParaSalvar))
     }
-  }, [formValues, abastecimentos, hydrated])
+  }, [formValues, abastecimentos, odometroAnteriorBanco, hydrated])
 
   useEffect(() => {
     setHydrated(true)
@@ -334,7 +344,6 @@ export default function Home() {
       const { error } = await supabase.from('fretes').insert([payload])
       if (error) throw error
 
-      // MOMENTO B: Sucesso ao salvar! Atualiza a memória do celular com o novo odômetro
       if (ultimoOdoInformado > 0) {
         salvarOdometroLocal(payload.placa, ultimoOdoInformado);
       }
