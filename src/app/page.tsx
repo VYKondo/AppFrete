@@ -14,6 +14,29 @@ import {
 const STORAGE_KEY = 'rascunho_frete_pwa'
 const APP_VERSION = '1.0.5' 
 
+// --- INÍCIO DA LÓGICA OFFLINE (LOCALSTORAGE) ---
+const CHAVE_FROTA = 'frota_odometros';
+
+const salvarOdometroLocal = (placa: string, novoOdometro: number) => {
+  try {
+    let frota = JSON.parse(localStorage.getItem(CHAVE_FROTA) || '{}');
+    frota[placa] = Number(novoOdometro);
+    localStorage.setItem(CHAVE_FROTA, JSON.stringify(frota));
+  } catch (e) {
+    console.error("Erro ao salvar odômetro local", e);
+  }
+};
+
+const lerOdometroLocal = (placa: string): number | null => {
+  try {
+    let frota = JSON.parse(localStorage.getItem(CHAVE_FROTA) || '{}');
+    return frota[placa] || null;
+  } catch (e) {
+    return null;
+  }
+};
+// --- FIM DA LÓGICA OFFLINE ---
+
 const LABELS_CAMPOS: Record<string, string> = {
   pedagio: 'Pedágio', mecanica: 'Mecânica', eletrica: 'Elétrica', borracharia: 'Borracharia',
   diferenca_frete: 'Diferença Frete', quebra: 'Quebra', patio: 'Pátio', limpeza: 'Limpeza',
@@ -86,22 +109,40 @@ export default function Home() {
     setBuscandoOdo(true)
 
     try {
+      // TENTA A REDE PRIMEIRO
       const { data, error } = await supabase
         .from('fretes')
         .select('odometro_atual')
         .eq('placa', placaLimpa)
-        .gt('odometro_atual', 0) // <-- CORREÇÃO: Ignora os fretes onde o odômetro foi salvo como 0
+        .gt('odometro_atual', 0)
         .order('odometro_atual', { ascending: false })
         .limit(1)
         .maybeSingle()
 
       if (error) throw error
       
-      setOdometroAnteriorBanco(data ? Number(data.odometro_atual) : 0)
+      const odometroBanco = data ? Number(data.odometro_atual) : 0;
+      setOdometroAnteriorBanco(odometroBanco)
       setErrorOdo(false)
+
+      // MOMENTO A: Rede funcionou? Clona o dado fresco pro celular
+      if (odometroBanco > 0) {
+        salvarOdometroLocal(placaLimpa, odometroBanco);
+      }
+
     } catch (err) {
-      console.error("Erro na sincronização:", err)
+      console.warn("Sem internet! Buscando odômetro da memória do celular...");
       setErrorOdo(true)
+      
+      // FALLBACK (CAIU A REDE): Lê a "gaveta" do celular
+      const odometroLocal = lerOdometroLocal(placaLimpa);
+      
+      if (odometroLocal !== null) {
+        setOdometroAnteriorBanco(odometroLocal); // Salva a pátria
+      } else {
+        setOdometroAnteriorBanco(0); // Caminhão nunca andou ou celular novo
+      }
+
     } finally {
       setBuscandoOdo(false)
     }
@@ -281,7 +322,6 @@ export default function Home() {
         preco_ton: parseCurrency(formValues.preco_ton), 
         receita: stats.receita, 
         
-        // CORREÇÃO: Fallback garantindo que o JSON vá formatado com zeros se não houver abastecimentos
         abastecimentos_json: processados.length > 0 
           ? processados 
           : [{ volume: 0, odometro: 0, valor: 0, completou: false, media_kml: 0 }], 
@@ -293,6 +333,11 @@ export default function Home() {
 
       const { error } = await supabase.from('fretes').insert([payload])
       if (error) throw error
+
+      // MOMENTO B: Sucesso ao salvar! Atualiza a memória do celular com o novo odômetro
+      if (ultimoOdoInformado > 0) {
+        salvarOdometroLocal(payload.placa, ultimoOdoInformado);
+      }
 
       localStorage.removeItem(STORAGE_KEY)
       await Swal.fire({ 
@@ -349,7 +394,11 @@ export default function Home() {
                   buscandoOdo ? (
                     <span className="flex items-center gap-1 text-[9px] font-black text-blue-400 animate-pulse"><RefreshCw size={10} className="animate-spin" /> SINCRONIZANDO...</span>
                   ) : errorOdo ? (
-                    <button type="button" onClick={buscarUltimoOdometro} className="flex items-center gap-1 text-[9px] font-black text-red-400 uppercase hover:underline"><WifiOff size={10} /> FALHA NA REDE (REPETIR)</button>
+                    odometroAnteriorBanco && odometroAnteriorBanco > 0 ? (
+                      <span className="flex items-center gap-1 text-[9px] font-black text-amber-400 uppercase"><WifiOff size={10} /> LOCAL: {odometroAnteriorBanco.toLocaleString('pt-BR')}</span>
+                    ) : (
+                      <button type="button" onClick={buscarUltimoOdometro} className="flex items-center gap-1 text-[9px] font-black text-red-400 uppercase hover:underline"><WifiOff size={10} /> FALHA NA REDE (REPETIR)</button>
+                    )
                   ) : odometroAnteriorBanco !== null ? (
                     <span className="text-[9px] font-black text-emerald-400 uppercase">
                       {odometroAnteriorBanco > 0 ? `KM ANTERIOR: ${odometroAnteriorBanco.toLocaleString('pt-BR')}` : "PRIMEIRO REGISTRO"}
@@ -358,8 +407,8 @@ export default function Home() {
                 } 
                 icon={
                   buscandoOdo ? <RefreshCw className="text-blue-500 animate-spin" size={20} /> :
-                  errorOdo ? <AlertTriangle className="text-red-500" size={20} /> :
-                  odometroAnteriorBanco !== null ? <CheckCircle2 className="text-emerald-500" size={20} /> : null
+                  errorOdo && (!odometroAnteriorBanco || odometroAnteriorBanco === 0) ? <AlertTriangle className="text-red-500" size={20} /> :
+                  odometroAnteriorBanco !== null ? <CheckCircle2 className={errorOdo ? "text-amber-500" : "text-emerald-500"} size={20} /> : null
                 } 
               />
 
