@@ -12,9 +12,8 @@ import {
 } from 'lucide-react'
 
 const STORAGE_KEY = 'rascunho_frete_pwa'
-const APP_VERSION = '1.0.5' 
+const APP_VERSION = '1.0.6' 
 
-// --- INÍCIO DA LÓGICA OFFLINE (LOCALSTORAGE) ---
 const CHAVE_FROTA = 'frota_odometros';
 
 const salvarOdometroLocal = (placa: string, novoOdometro: number) => {
@@ -89,6 +88,9 @@ export default function Home() {
   const [buscandoOdo, setBuscandoOdo] = useState(false)
   const [errorOdo, setErrorOdo] = useState(false)
 
+  // NOVA LÓGICA: Ref para rastrear a última placa buscada e evitar race conditions / double fetch
+  const placaBuscadaRef = useRef<string | null>(null);
+
   const [formValues, setFormValues] = useState<any>({
     motorista: '', placa: '', data_frete: new Date().toISOString().split('T')[0],
     peso_ton: '', preco_ton: '', frete_de: '', para: '', pedagio: '', mecanica: '', eletrica: '',
@@ -101,36 +103,31 @@ export default function Home() {
   const isPlacaPreenchida = useMemo(() => formValues.placa.replace(/[^A-Z0-9]/gi, '').length >= 7, [formValues.placa])
   const parseCurrency = (v: any) => Number(String(v || '0').replace(/\D/g, '')) / 100
   
-  // CORREÇÃO 1: Regex agressivo para remover letras e espaços inquebráveis, mantendo apenas números e vírgulas.
   const parseNumero = (v: any) => parseFloat(String(v || '0').replace(/[^\d,]/g, '').replace(',', '.')) || 0
 
-  // CORREÇÃO 3: Verificação se o motorista já começou a preencher o odômetro.
   const temAbastecimentoPreenchido = useMemo(() => {
     return abastecimentos.some(a => parseNumero(a.odometro) > 0);
   }, [abastecimentos]);
 
-  const buscarUltimoOdometro = useCallback(async () => {
-    // CORREÇÃO 3: Trava de segurança. Se já tem odômetro preenchido, não sobrepõe.
-    if (temAbastecimentoPreenchido && odometroAnteriorBanco !== null) return;
-
+  // NOVA LÓGICA: Aceita o parâmetro "forcarBusca"
+  const buscarUltimoOdometro = useCallback(async (forcarBusca = false) => {
     const placaLimpa = formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase()
     if (placaLimpa.length < 7) return
 
+    // NOVA LÓGICA: Só bloqueia se for a mesma placa E não for uma busca forçada
+    const isMesmaPlaca = placaBuscadaRef.current === placaLimpa;
+    if (!forcarBusca && isMesmaPlaca && temAbastecimentoPreenchido && odometroAnteriorBanco !== null) {
+      return;
+    }
+
     setBuscandoOdo(true)
+    placaBuscadaRef.current = placaLimpa; // Marca que estamos lidando com esta placa agora
 
     try {
-      const { data, error } = await supabase
-        .from('fretes')
-        .select('odometro_atual')
-        .eq('placa', placaLimpa)
-        .gt('odometro_atual', 0)
-        .order('odometro_atual', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
+      const { data, error } = await supabase.rpc('buscar_odometro_seguro', { placa_busca: placaLimpa })
       if (error) throw error
       
-      const odometroBanco = data ? Number(data.odometro_atual) : 0;
+      const odometroBanco = data ? Number(data) : 0;
       setOdometroAnteriorBanco(odometroBanco)
       setErrorOdo(false)
 
@@ -143,7 +140,6 @@ export default function Home() {
       setErrorOdo(true)
       
       const odometroLocal = lerOdometroLocal(placaLimpa);
-      
       if (odometroLocal !== null) {
         setOdometroAnteriorBanco(odometroLocal); 
       } else {
@@ -155,46 +151,42 @@ export default function Home() {
     }
   }, [formValues.placa, temAbastecimentoPreenchido, odometroAnteriorBanco])
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (isPlacaPreenchida) {
-      intervalRef.current = setInterval(() => {
-        buscarUltimoOdometro();
-      }, 90000); 
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isPlacaPreenchida, buscarUltimoOdometro]);
-
+  // 1. Gatilho de mudança de estado da rede
   useEffect(() => {
     const handleOnline = () => {
-      if (isPlacaPreenchida && (odometroAnteriorBanco === null || errorOdo)) {
-        buscarUltimoOdometro()
+      // NOVA LÓGICA: Se voltou a internet e estávamos com erro, força a busca
+      if (isPlacaPreenchida && errorOdo) {
+        buscarUltimoOdometro(true)
       }
     }
     window.addEventListener('online', handleOnline)
     return () => window.removeEventListener('online', handleOnline)
-  }, [isPlacaPreenchida, odometroAnteriorBanco, errorOdo, buscarUltimoOdometro])
+  }, [isPlacaPreenchida, errorOdo, buscarUltimoOdometro])
 
+  // 2. Gatilho principal de digitação
   useEffect(() => {
     if (!isPlacaPreenchida) {
       setOdometroAnteriorBanco(null)
       setErrorOdo(false)
+      placaBuscadaRef.current = null; // Reseta a ref quando apaga a placa
       return
     }
-    buscarUltimoOdometro()
-  }, [isPlacaPreenchida, buscarUltimoOdometro])
 
+    const placaLimpa = formValues.placa.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+    
+    // NOVA LÓGICA: Só dispara se a placa for diferente da última que já tentou buscar
+    if (placaLimpa !== placaBuscadaRef.current) {
+      buscarUltimoOdometro()
+    }
+  }, [isPlacaPreenchida, formValues.placa, buscarUltimoOdometro])
+
+  // 3. Gestão de versões e carregamento do rascunho
   useEffect(() => {
     const lastVersion = localStorage.getItem('app_version')
     if (lastVersion !== APP_VERSION) { localStorage.removeItem(STORAGE_KEY); localStorage.setItem('app_version', APP_VERSION) }
     const rascunhoSalvo = localStorage.getItem(STORAGE_KEY)
     if (rascunhoSalvo) {
       try {
-        // CORREÇÃO 2: Recuperando o odômetro base salvo no rascunho
         const { formValues: f, abastecimentos: a, odometroAnteriorBanco: o } = JSON.parse(rascunhoSalvo)
         if (f) setFormValues({ ...f, caixinha: 'R$ 20,00' })
         if (a) setAbastecimentos(a)
@@ -205,7 +197,6 @@ export default function Home() {
 
   useEffect(() => {
     if (hydrated) {
-      // CORREÇÃO 2: Salvando o odômetro base no rascunho para sobreviver a suspensões de aba
       const dadosParaSalvar = { formValues, abastecimentos, odometroAnteriorBanco }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dadosParaSalvar))
     }
@@ -318,7 +309,13 @@ export default function Home() {
           volumeAcumuladoParaMedia = 0;
         }
         
-        return { ...abs, volume: volumeAtual, valor: parseCurrency(abs.valor), media_kml: media_trecho };
+        return { 
+          ...abs, 
+          odometro: odoAtual, 
+          volume: volumeAtual, 
+          valor: parseCurrency(abs.valor), 
+          media_kml: media_trecho 
+        };
       });
 
       const mediaFinal = [...processados].reverse().find(a => a.media_kml > 0)?.media_kml || 0;
@@ -406,7 +403,8 @@ export default function Home() {
                     odometroAnteriorBanco && odometroAnteriorBanco > 0 ? (
                       <span className="flex items-center gap-1 text-[9px] font-black text-amber-400 uppercase"><WifiOff size={10} /> LOCAL: {odometroAnteriorBanco.toLocaleString('pt-BR')}</span>
                     ) : (
-                      <button type="button" onClick={buscarUltimoOdometro} className="flex items-center gap-1 text-[9px] font-black text-red-400 uppercase hover:underline"><WifiOff size={10} /> FALHA NA REDE (REPETIR)</button>
+                      // NOVA LÓGICA: Botão agora força a busca passando true
+                      <button type="button" onClick={() => buscarUltimoOdometro(true)} className="flex items-center gap-1 text-[9px] font-black text-red-400 uppercase hover:underline"><WifiOff size={10} /> FALHA NA REDE (REPETIR)</button>
                     )
                   ) : odometroAnteriorBanco !== null ? (
                     <span className="text-[9px] font-black text-emerald-400 uppercase">
@@ -546,4 +544,4 @@ export default function Home() {
       </div>
     </div>
   )
-}
+} 
