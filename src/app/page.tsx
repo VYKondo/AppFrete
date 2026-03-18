@@ -84,6 +84,9 @@ export default function Home() {
   const [userName, setUserName] = useState('')
   const [hydrated, setHydrated] = useState(false)
 
+  // AQUI: O estado do userEmail agora está do lado de dentro do componente!
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+
   const [odometroAnteriorBanco, setOdometroAnteriorBanco] = useState<number | null>(null)
   const [buscandoOdo, setBuscandoOdo] = useState(false)
   const [errorOdo, setErrorOdo] = useState(false)
@@ -202,14 +205,17 @@ export default function Home() {
     }
   }, [formValues, abastecimentos, odometroAnteriorBanco, hydrated])
 
+  // AQUI: Adicionado a captura do userEmail junto com o fetch inicial do usuário!
   useEffect(() => {
     setHydrated(true)
     async function checkUser() {
       const { data, error } = await supabase.auth.getUser()
       if (error || !data.user) { router.push('/login'); return; }
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single()
+      
       setRole(profile?.role || 'user')
       setUserName(profile?.full_name || data.user.email?.split('@')[0] || '')
+      setUserEmail(data.user.email || null) // Atualiza o email no nosso estado!
     }
     checkUser()
   }, [router])
@@ -249,6 +255,7 @@ export default function Home() {
     });
   }, [abastecimentos, odometroAnteriorBanco]);
 
+  // AQUI: A lógica das porcentagens atualizada e funcionando!
   const stats = useMemo(() => {
     const bruto = round2(parseNumero(formValues.peso_ton) * parseCurrency(formValues.preco_ton))
     const receita = round2(bruto) 
@@ -258,10 +265,17 @@ export default function Home() {
         if (campo === 'caixinha' && v === 0) v = 20;
         return acc + v;
     }, 0))
-    const despesasTotais = round2(diesel + despesasOp + receita * 0.12)
+
+    // Define a taxa: 11% (0.11) se for o Roni, 12% (0.12) para qualquer outro admin
+    const taxaPercentual = userEmail === 'roniamaral@gmail.com' ? 0.11 : 0.12;
+    
+    // Aplica a taxa na receita
+    const despesasTotais = round2(diesel + despesasOp + (receita * taxaPercentual))
     const lucro = round2(receita - despesasTotais)
+    
     return { bruto, receita, despesas: despesasTotais, lucro }
-  }, [formValues, abastecimentos])
+    
+  }, [formValues, abastecimentos, userEmail])
 
   async function handleConfirmSave() {
     setIsModalOpen(false)
@@ -544,4 +558,4 @@ export default function Home() {
       </div>
     </div>
   )
-} 
+}

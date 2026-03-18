@@ -12,6 +12,8 @@ export default function FretesPage() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [isAdminUser, setIsAdminUser] = useState(false)
 
   const labelMap: { [key: string]: string } = {
     pedagio: "Pedágio",
@@ -39,23 +41,55 @@ export default function FretesPage() {
     async function checkAccess() {
       const { data, error } = await supabase.auth.getUser()
       if (error || !data.user) { router.push('/login'); return }
+      
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single()
-      if (profile?.role !== 'admin') { router.push('/'); return }
-      fetchFretes()
+      
+      const emailLogado = data.user.email
+      const isRoni = emailLogado === 'roniamaral@gmail.com'
+      const adminStatus = profile?.role === 'admin'
+
+      if (!adminStatus && !isRoni) { router.push('/'); return }
+      
+      // SALVA NO ESTADO AQUI:
+      setUserEmail(emailLogado || null)
+      setIsAdminUser(adminStatus)
+      
+      fetchFretes(emailLogado, adminStatus)
     }
     checkAccess()
   }, [router])
 
-  async function fetchFretes() {
-    const { data, error } = await supabase
+  async function fetchFretes(emailAtual?: string | null, adminAtual?: boolean) {
+    // Tenta usar o parâmetro, se não tiver, pega do Estado que salvamos
+    const email = emailAtual || userEmail;
+    const admin = adminAtual !== undefined ? adminAtual : isAdminUser;
+
+    // Se o email sumir por algum motivo, aborta a busca por segurança
+    if (!email) return;
+
+    let query = supabase
       .from('fretes')
       .select('*')
       .order('created_at', { ascending: false })
     
+    if (email === 'roniamaral@gmail.com') {
+      query = query.eq('user_email', 'roniamaral@gmail.com')
+    } 
+    else if (admin) {
+      query = query.or('user_email.neq.roniamaral@gmail.com,user_email.is.null')
+    } 
+    else {
+      // Bloqueio final: se cair aqui não mostra nada
+      setFretes([])
+      setLoading(false)
+      return
+    }
+
+    const { data, error } = await query
+    
     if (!error && data) setFretes(data)
     setLoading(false)
   }
-
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
   async function handleDelete(id: string, e: React.MouseEvent) {
@@ -72,7 +106,9 @@ export default function FretesPage() {
     })
     if (result.isConfirmed) {
       const { error } = await supabase.from('fretes').delete().eq('id', id)
-      if (!error) fetchFretes()
+      
+      // AQUI ESTAVA O BUG! Agora passamos os dados de volta para manter o filtro ativo:
+      if (!error) fetchFretes(userEmail, isAdminUser) 
     }
   }
 
